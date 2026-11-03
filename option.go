@@ -1,9 +1,6 @@
 package oscore
 
-import (
-	"bytes"
-	"errors"
-)
+import "bytes"
 
 // OSCORE flag bits (RFC 8613, Section 6.1).
 const (
@@ -41,8 +38,6 @@ func (v *optionValue) encode() []byte {
 	return append(b, v.kid...)
 }
 
-var errMalformedOption = errors.New("oscore: malformed OSCORE option")
-
 // parseOptionValue decodes an OSCORE option value. The fields share memory
 // with b.
 func parseOptionValue(b []byte) (*optionValue, error) {
@@ -53,14 +48,14 @@ func parseOptionValue(b []byte) (*optionValue, error) {
 	flags := b[0]
 	b = b[1:]
 	if flags&flagsUnused != 0 {
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	n := int(flags & flagPIVMask)
 	if n > maxPIVSize || n > len(b) {
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	if n > 1 && b[0] == 0 {
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	if n > 0 {
 		v.piv = b[:n:n]
@@ -68,7 +63,7 @@ func parseOptionValue(b []byte) (*optionValue, error) {
 	b = b[n:]
 	if flags&flagContext != 0 {
 		if len(b) < 1 || int(b[0]) > len(b)-1 {
-			return nil, errMalformedOption
+			return nil, ErrMalformed
 		}
 		s := int(b[0])
 		v.hasContext = true
@@ -79,11 +74,11 @@ func parseOptionValue(b []byte) (*optionValue, error) {
 		v.hasKID = true
 		v.kid = b
 	} else if len(b) > 0 {
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	if flags == 0 {
 		// The value is empty when all flag bits are zero.
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	return v, nil
 }
@@ -128,7 +123,7 @@ func requestOption(m *Message) (*optionValue, error) {
 		return nil, err
 	}
 	if v.piv == nil || !v.hasKID {
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	return v, nil
 }
@@ -140,10 +135,10 @@ func oscoreOption(m *Message) ([]byte, error) {
 		return nil, ErrNotProtected
 	case 1:
 	default:
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	if len(m.Payload) == 0 {
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	v, _ := m.option(OSCORE)
 	return v, nil

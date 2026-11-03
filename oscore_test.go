@@ -248,18 +248,18 @@ func TestMalformedRequests(t *testing.T) {
 		want error
 	}{
 		{"no OSCORE option", get("a"), ErrNotProtected},
-		{"no payload", with(oscoreValue, nil), errMalformedOption},
-		{"two OSCORE options", &Message{Options: []Option{{OSCORE, oscoreValue}, {OSCORE, oscoreValue}}, Payload: good.Payload}, errMalformedOption},
-		{"empty value", with([]byte{}, good.Payload), errMalformedOption},
-		{"flags all zero", with([]byte{0}, good.Payload), errMalformedOption},
-		{"reserved bit", with([]byte{0x29, 0, 1}, good.Payload), errMalformedOption},
-		{"Partial IV length 6", with([]byte{0x0e, 1, 2, 3, 4, 5, 6, 1}, good.Payload), errMalformedOption},
-		{"Partial IV too short", with([]byte{0x03, 1}, good.Payload), errMalformedOption},
-		{"Partial IV with leading zero", with([]byte{0x0a, 0, 1, 1}, good.Payload), errMalformedOption},
-		{"no kid", with([]byte{0x01, 0}, good.Payload), errMalformedOption},
-		{"no Partial IV", with([]byte{0x08, 1}, good.Payload), errMalformedOption},
-		{"kid context too long", with([]byte{0x19, 0, 5, 1}, good.Payload), errMalformedOption},
-		{"kid context without length", with([]byte{0x11, 0}, good.Payload), errMalformedOption},
+		{"no payload", with(oscoreValue, nil), ErrMalformed},
+		{"two OSCORE options", &Message{Options: []Option{{OSCORE, oscoreValue}, {OSCORE, oscoreValue}}, Payload: good.Payload}, ErrMalformed},
+		{"empty value", with([]byte{}, good.Payload), ErrMalformed},
+		{"flags all zero", with([]byte{0}, good.Payload), ErrMalformed},
+		{"reserved bit", with([]byte{0x29, 0, 1}, good.Payload), ErrMalformed},
+		{"Partial IV length 6", with([]byte{0x0e, 1, 2, 3, 4, 5, 6, 1}, good.Payload), ErrMalformed},
+		{"Partial IV too short", with([]byte{0x03, 1}, good.Payload), ErrMalformed},
+		{"Partial IV with leading zero", with([]byte{0x0a, 0, 1, 1}, good.Payload), ErrMalformed},
+		{"no kid", with([]byte{0x01, 0}, good.Payload), ErrMalformed},
+		{"no Partial IV", with([]byte{0x08, 1}, good.Payload), ErrMalformed},
+		{"kid context too long", with([]byte{0x19, 0, 5, 1}, good.Payload), ErrMalformed},
+		{"kid context without length", with([]byte{0x11, 0}, good.Payload), ErrMalformed},
 		{"short ciphertext", with(oscoreValue, []byte{1, 2, 3}), ErrDecrypt},
 	}
 	for _, tt := range tests {
@@ -269,7 +269,7 @@ func TestMalformedRequests(t *testing.T) {
 				t.Fatalf("err = %v, want %v", err, tt.want)
 			}
 			r := ErrorResponse(err)
-			if tt.want == errMalformedOption && (r == nil || r.Code != BadOption) {
+			if tt.want == ErrMalformed && (r == nil || r.Code != BadOption) {
 				t.Errorf("error response = %+v, want 4.02", r)
 			}
 		})
@@ -436,9 +436,9 @@ func TestResponseErrors(t *testing.T) {
 	}{
 		"plain":       {&Message{Code: Content}, ErrNotProtected},
 		"flipped bit": {tamper(func(m *Message) { m.Payload[0] ^= 1 }), ErrDecrypt},
-		"kid context": {tamper(func(m *Message) { m.Options[0].Value = []byte{0x10, 0} }), errMalformedOption},
+		"kid context": {tamper(func(m *Message) { m.Options[0].Value = []byte{0x10, 0} }), ErrMalformed},
 		"other kid":   {tamper(func(m *Message) { m.Options[0].Value = []byte{0x08, 0x07} }), ErrUnknownContext},
-		"bad flags":   {tamper(func(m *Message) { m.Options[0].Value = []byte{0x80} }), errMalformedOption},
+		"bad flags":   {tamper(func(m *Message) { m.Options[0].Value = []byte{0x80} }), ErrMalformed},
 	} {
 		if _, err := cx.UnprotectResponse(tt.m); !errors.Is(err, tt.want) {
 			t.Errorf("%s: err = %v, want %v", name, err, tt.want)
@@ -523,8 +523,7 @@ func TestEchoRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err = server.UnprotectRequest(first)
-	var echoErr *ErrEchoRequired
-	if !errors.As(err, &echoErr) {
+	if !errors.Is(err, ErrEchoRequired) {
 		t.Fatalf("err = %v, want ErrEchoRequired", err)
 	}
 	resp := ErrorResponse(err)
@@ -545,7 +544,7 @@ func TestEchoRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := server.UnprotectRequest(again); !errors.As(err, &echoErr) {
+	if _, _, err := server.UnprotectRequest(again); !errors.Is(err, ErrEchoRequired) {
 		t.Fatalf("err = %v, want ErrEchoRequired", err)
 	}
 
@@ -680,8 +679,8 @@ func TestErrorResponse(t *testing.T) {
 	if r := ErrorResponse(ErrNotProtected); r.Code != Unauthorized || len(r.Payload) != 0 {
 		t.Errorf("ErrNotProtected response = %+v", r)
 	}
-	if (&ErrEchoRequired{}).Error() == "" {
-		t.Error("empty error text")
+	if (&echoError{}).Error() != ErrEchoRequired.Error() {
+		t.Error("echoError text")
 	}
 }
 

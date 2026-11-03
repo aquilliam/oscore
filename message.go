@@ -1,7 +1,6 @@
 package oscore
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 )
@@ -167,7 +166,7 @@ func optionNibble(b []byte, v int) (byte, []byte) {
 	}
 }
 
-var errMalformedOptions = errors.New("oscore: malformed options")
+var errMalformedOptions = fmt.Errorf("%w: bad CoAP options", ErrMalformed)
 
 // parseOptions decodes options and the payload as in RFC 7252, Section 3.1.
 // The values share memory with b.

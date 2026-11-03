@@ -39,8 +39,8 @@ type Exchange struct {
 // The options of m are protected as RFC 8613, Section 4.1 says: Uri-Host,
 // Uri-Port, Proxy-Scheme, Hop-Limit and EDHOC are left outside, Proxy-Uri is
 // split, Observe is both inside and outside, and every other option is
-// encrypted. Outer Block options for a proxy, if any, are added to the
-// OSCORE request afterwards.
+// encrypted. Block options in m are Inner, for block-wise transfer between
+// the endpoints; Outer Block options belong to the transport.
 func (c *Context) ProtectRequest(m *Message) (*Message, *Exchange, error) {
 	piv, err := c.nextPIV()
 	if err != nil {
@@ -125,7 +125,7 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, nil, &ErrEchoRequired{response: resp}
+		return nil, nil, &echoError{response: resp}
 	}
 	defer c.mu.Unlock()
 	if c.replayed(seq) {
@@ -193,7 +193,7 @@ func (x *Exchange) UnprotectResponse(m *Message) (*Message, error) {
 		return nil, err
 	}
 	if v.hasContext {
-		return nil, errMalformedOption
+		return nil, ErrMalformed
 	}
 	if v.hasKID && !bytes.Equal(v.kid, c.recipientID) {
 		return nil, ErrUnknownContext
