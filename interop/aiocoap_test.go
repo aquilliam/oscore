@@ -8,6 +8,8 @@
 //	AIOCOAP_PYTHON    a Python with aiocoap[oscore] installed, such as
 //	                  .venv/bin/python after
 //	                  uv venv && uv pip install "aiocoap[oscore]==0.4.17"
+//	LIBCOAP_BIN       a directory with the coap-client and coap-server examples
+//	                  of libcoap 4.3.5, built with OSCORE
 package interop
 
 import (

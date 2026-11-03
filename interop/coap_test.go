@@ -128,9 +128,11 @@ func option(m *oscore.Message, n oscore.OptionNumber) ([]byte, bool) {
 }
 
 // A client sends CoAP requests over UDP to one server and collects the
-// responses for each token.
+// responses for each token. Its socket is not connected, since a server may
+// answer from another socket bound to the same address.
 type client struct {
 	conn *net.UDPConn
+	addr *net.UDPAddr
 	mu   sync.Mutex
 	mid  uint16
 	subs map[string]chan *datagram
@@ -141,11 +143,11 @@ func dial(addr string) (*client, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn, err := net.DialUDP("udp", nil, raddr)
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: raddr.IP})
 	if err != nil {
 		return nil, err
 	}
-	c := &client{conn: conn, subs: make(map[string]chan *datagram)}
+	c := &client{conn: conn, addr: raddr, subs: make(map[string]chan *datagram)}
 	go c.read()
 	return c, nil
 }
@@ -153,7 +155,7 @@ func dial(addr string) (*client, error) {
 func (c *client) read() {
 	buf := make([]byte, 2048)
 	for {
-		n, err := c.conn.Read(buf)
+		n, from, err := c.conn.ReadFromUDP(buf)
 		if err != nil {
 			return
 		}
@@ -162,7 +164,7 @@ func (c *client) read() {
 			continue
 		}
 		if d.typ == con {
-			c.conn.Write((&datagram{typ: ack, mid: d.mid}).marshal())
+			c.conn.WriteToUDP((&datagram{typ: ack, mid: d.mid}).marshal(), from)
 		}
 		if d.Code == 0 {
 			continue
@@ -190,7 +192,7 @@ func (c *client) send(m *oscore.Message) (chan *datagram, error) {
 	d := &datagram{typ: con, mid: c.mid, token: token, Message: *m}
 	c.subs[string(token)] = ch
 	c.mu.Unlock()
-	_, err := c.conn.Write(d.marshal())
+	_, err := c.conn.WriteToUDP(d.marshal(), c.addr)
 	return ch, err
 }
 
