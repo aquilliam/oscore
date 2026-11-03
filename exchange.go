@@ -108,8 +108,7 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 		echo, ok := inner.option(Echo)
 		if ok && c.echo != nil && bytes.Equal(echo, c.echo) {
 			c.lost, c.echo = false, nil
-			c.window = ReplayWindow{}
-			c.accept(seq)
+			c.window = ReplayWindow{Highest: seq, Received: windowMask(c.windowSize)}
 			c.mu.Unlock()
 			return inner, x, nil
 		}
