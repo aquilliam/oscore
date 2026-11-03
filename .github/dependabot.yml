@@ -8,3 +8,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: golang.org/x/crypto
+        versions: [">= 0.56.0"]
