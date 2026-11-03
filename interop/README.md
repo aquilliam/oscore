@@ -20,4 +20,6 @@ export LIBCOAP_BIN=$PWD/libcoap/build
 go test ./...
 ```
 
-CI runs them on every push.
+TestEDHOC, which sets up contexts with
+[github.com/aquilliam/edhoc](https://github.com/aquilliam/edhoc) for every
+EDHOC cipher suite, needs no setup. CI runs all of them on every push.
