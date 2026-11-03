@@ -10,6 +10,8 @@ import (
 
 var errMalformedCode = fmt.Errorf("%w: wrong kind of CoAP code in the plaintext", ErrMalformed)
 
+var errOuterProxyURI = fmt.Errorf("%w: Outer Proxy-Uri with a path or query", ErrMalformed)
+
 var errUnexpectedObserve = errors.New("oscore: Observe option in a response to a request without one")
 
 // An Exchange binds the responses to a request to that request (RFC 8613,
@@ -77,12 +79,25 @@ func (c *Context) ProtectRequest(m *Message) (*Message, *Exchange, error) {
 // protect the responses with. The context must be the one whose Recipient
 // ID and ID Context match the request; see ParseRequestID.
 //
+// The decrypted request has the Code, payload and Inner options of the
+// original request, and the Outer Uri-Host, Uri-Port, Proxy-Uri,
+// Proxy-Scheme, Hop-Limit and EDHOC options of m, which are not protected.
+//
 // If it fails, the request must not be processed; ErrorResponse(err) is the
 // response to send, if any.
 func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 	v, err := requestOption(m)
 	if err != nil {
 		return nil, nil, err
+	}
+	for _, o := range m.Options {
+		// An Outer Proxy-Uri has only a scheme and authority (RFC 8613,
+		// Section 4.1.3.3).
+		if o.Number == ProxyURI {
+			if _, rest, err := splitProxyURI(string(o.Value)); err != nil || len(rest) > 0 {
+				return nil, nil, errOuterProxyURI
+			}
+		}
 	}
 	if !c.matches(v) {
 		return nil, nil, ErrUnknownContext
@@ -150,7 +165,8 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 //
 // The first response reuses the request's nonce; later notifications to an
 // Observe registration get a Partial IV of their own. A response with an
-// Observe option is protected as a notification.
+// Observe option is protected as a notification, and one without ends the
+// observation.
 func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 	if !x.server {
 		return nil, errors.New("oscore: ProtectResponse called on a client exchange")
@@ -179,6 +195,9 @@ func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 		return nil, err
 	}
 	x.responses++
+	if _, ok := m.option(Observe); !ok || m.Code.signaling() {
+		x.observe = false
+	}
 	return out, nil
 }
 
@@ -186,11 +205,10 @@ func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 // of a client's exchange (RFC 8613, Section 8.4). It returns the decrypted
 // response. If it fails, the response must be ignored.
 //
-// For an Observe registration, notifications are accepted only if their
-// Partial IV is higher than that of every notification accepted before
-// (RFC 8613, Section 7.4.1). The Observe option of a decrypted notification
-// is set to the three least significant bytes of its Partial IV, so that it
-// orders notifications as RFC 7641 expects.
+// For an Observe registration, a notification is accepted only if it is
+// newer than every notification accepted before (RFC 8613, Section 7.4.1),
+// so accepted notifications are in order. The Observe option of a decrypted
+// notification is empty. A response without Observe ends the observation.
 func (x *Exchange) UnprotectResponse(m *Message) (*Message, error) {
 	if x.server {
 		return nil, errors.New("oscore: UnprotectResponse called on a server exchange")
@@ -232,7 +250,7 @@ func (x *Exchange) UnprotectResponse(m *Message) (*Message, error) {
 	case !x.observe && x.responses > 0:
 		return nil, ErrReplay
 	case v.piv == nil:
-		if x.nonceUsed {
+		if x.nonceUsed || x.notified {
 			return nil, ErrReplay
 		}
 		x.nonceUsed = true
@@ -246,16 +264,8 @@ func (x *Exchange) UnprotectResponse(m *Message) (*Message, error) {
 		}
 	}
 	x.responses++
-	if notification {
-		value := []byte{}
-		if v.piv != nil {
-			value = encodeUint(decodeUint(v.piv) & 0xffffff)
-		}
-		for i := range inner.Options {
-			if inner.Options[i].Number == Observe {
-				inner.Options[i].Value = value
-			}
-		}
+	if !notification {
+		x.observe = false
 	}
 	return inner, nil
 }
@@ -273,6 +283,9 @@ func (c *Context) seal(m *Message, request bool, nonce []byte, aead cipher.AEAD,
 	if len(m.Payload) > 0 {
 		plaintext = append(plaintext, payloadMarker)
 		plaintext = append(plaintext, m.Payload...)
+	}
+	if p := aeads[c.alg]; p.ccm && p.nonceSize > 7 && len(plaintext) >= 1<<(8*(15-p.nonceSize)) {
+		return nil, ErrTooLarge
 	}
 	out := &Message{Code: outerCode(m, request)}
 	out.Options = sortOptions(append(outer, Option{Number: OSCORE, Value: opt.encode()}))
@@ -298,7 +311,7 @@ func (c *Context) open(m *Message, nonce []byte, aead cipher.AEAD, aad []byte) (
 	}
 	inner := &Message{Code: Code(plaintext[0]), Payload: payload}
 	for _, o := range m.Options {
-		if classU(o.Number) && o.Number != OSCORE {
+		if classU(o.Number) && o.Number != OSCORE && !inner.Code.signaling() {
 			inner.Options = append(inner.Options, Option{Number: o.Number, Value: bytes.Clone(o.Value)})
 		}
 	}
@@ -335,7 +348,7 @@ func splitOptions(m *Message, request bool) (inner, outer []Option, err error) {
 		case m.Code.signaling():
 			inner = append(inner, o)
 		case o.Number == Observe:
-			outer = append(outer, o)
+			outer = append(outer, Option{Number: Observe, Value: bytes.Clone(o.Value)})
 			if request {
 				inner = append(inner, o)
 			} else {
@@ -349,7 +362,7 @@ func splitOptions(m *Message, request bool) (inner, outer []Option, err error) {
 			outer = append(outer, Option{Number: ProxyURI, Value: []byte(proxy)})
 			inner = append(inner, rest...)
 		case classU(o.Number):
-			outer = append(outer, o)
+			outer = append(outer, Option{Number: o.Number, Value: bytes.Clone(o.Value)})
 		default:
 			inner = append(inner, o)
 		}

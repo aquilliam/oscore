@@ -506,8 +506,8 @@ func TestObserve(t *testing.T) {
 	}
 	recv(0, ErrReplay)
 	m = recv(2, nil)
-	if v, _ := m.option(Observe); decodeUint(v) != 1 {
-		t.Errorf("notification Observe = %x, want its Partial IV", v)
+	if v, ok := m.option(Observe); !ok || len(v) != 0 {
+		t.Errorf("notification Observe = %x, %v", v, ok)
 	}
 	recv(1, ErrReplay) // older than the freshest
 	recv(2, ErrReplay)
@@ -752,5 +752,125 @@ func TestCodes(t *testing.T) {
 	r.Payload = server.sender.Seal(nil, sx.nonce, []byte{byte(GET)}, server.aad(sx.kid, sx.piv))
 	if _, err := cx.UnprotectResponse(r); !errors.Is(err, ErrMalformed) {
 		t.Errorf("request code in a response: err = %v", err)
+	}
+}
+
+func TestObserveLateFirstNotification(t *testing.T) {
+	client, server := newPair(t, nil)
+	_, cx, sx := exchange(t, client, server, get("temp", Option{Observe, nil}))
+	first, err := sx.ProtectResponse(&Message{Code: Content, Options: []Option{{Observe, []byte{1}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := sx.ProtectResponse(&Message{Code: Content, Options: []Option{{Observe, []byte{2}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cx.UnprotectResponse(second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cx.UnprotectResponse(first); !errors.Is(err, ErrReplay) {
+		t.Errorf("late notification without Partial IV: err = %v", err)
+	}
+}
+
+func TestObserveEnds(t *testing.T) {
+	client, server := newPair(t, nil)
+	_, cx, sx := exchange(t, client, server, get("temp", Option{Observe, nil}))
+	n, err := sx.ProtectResponse(&Message{Code: Content, Options: []Option{{Observe, []byte{1}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	end, err := sx.ProtectResponse(&Message{Code: NotFound})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sx.ProtectResponse(&Message{Code: Content, Options: []Option{{Observe, []byte{2}}}}); !errors.Is(err, ErrExchangeDone) {
+		t.Errorf("notification after the end: err = %v", err)
+	}
+	if _, err := cx.UnprotectResponse(end); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cx.UnprotectResponse(n); err == nil {
+		t.Error("notification accepted after the observation ended")
+	}
+}
+
+func TestTooLarge(t *testing.T) {
+	client, server := newPair(t, nil)
+	if _, _, err := client.ProtectRequest(&Message{Code: POST, Payload: make([]byte, 65535)}); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("err = %v, want ErrTooLarge", err)
+	}
+	if _, _, err := client.ProtectRequest(&Message{Code: POST, Payload: make([]byte, 65533)}); err != nil {
+		t.Errorf("largest message: %v", err)
+	}
+	_, _, sx := exchange(t, client, server, get("a"))
+	if _, err := sx.ProtectResponse(&Message{Code: Content, Payload: make([]byte, 70000)}); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("response: err = %v, want ErrTooLarge", err)
+	}
+	for _, alg := range []Algorithm{AESCCM64_64_128, A128GCM, ChaCha20Poly1305} {
+		client, server := newPair(t, func(c, s *Config) { c.AEAD, s.AEAD = alg, alg })
+		exchange(t, client, server, &Message{Code: POST, Payload: make([]byte, 70000)})
+	}
+}
+
+func TestReserveSaturates(t *testing.T) {
+	var stored []uint64
+	client, _ := newPair(t, func(c, s *Config) {
+		c.SenderSequence = 10
+		c.ReserveStep = ^uint64(0)
+		c.Reserve = func(next uint64) error { stored = append(stored, next); return nil }
+	})
+	for range 3 {
+		if _, _, err := client.ProtectRequest(get("a")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !slices.Equal(stored, []uint64{maxSenderSequenceNumber + 1}) {
+		t.Errorf("reserved %v", stored)
+	}
+}
+
+func TestOuterProxyURI(t *testing.T) {
+	client, server := newPair(t, nil)
+	out, _, err := client.ProtectRequest(get("status"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, uri := range []string{"coap://lock/unlock", "coap://lock?all", "not a uri"} {
+		m := &Message{Code: out.Code, Options: append(slices.Clone(out.Options), Option{ProxyURI, []byte(uri)}), Payload: out.Payload}
+		if _, _, err := server.UnprotectRequest(m); !errors.Is(err, ErrMalformed) {
+			t.Errorf("Outer Proxy-Uri %q: err = %v", uri, err)
+		}
+	}
+	m := &Message{Code: out.Code, Options: append(slices.Clone(out.Options), Option{ProxyURI, []byte("coap://lock")}), Payload: out.Payload}
+	in, _, err := server.UnprotectRequest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := optionValues(in, ProxyURI); !slices.Equal(got, []string{"coap://lock"}) {
+		t.Errorf("Proxy-Uri = %q", got)
+	}
+}
+
+func TestOuterOptionsAreCopied(t *testing.T) {
+	client, _ := newPair(t, nil)
+	host := []byte("example.com")
+	out, _, err := client.ProtectRequest(&Message{Code: GET, Options: []Option{{URIHost, host}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host[0] = 'X'
+	if got := optionValues(out, URIHost); got[0] != "example.com" {
+		t.Errorf("Uri-Host = %q after changing the original", got)
+	}
+}
+
+func TestInconsistentReplayWindow(t *testing.T) {
+	for _, w := range []ReplayWindow{{Highest: 5}, {Highest: 5, Received: 2}} {
+		cfg := &Config{MasterSecret: []byte{1}, SenderID: []byte{1}, RecipientID: []byte{2}, ReplayWindow: &w}
+		if _, err := NewContext(cfg); err == nil {
+			t.Errorf("window %+v accepted", w)
+		}
 	}
 }

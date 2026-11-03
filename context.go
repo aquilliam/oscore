@@ -120,9 +120,12 @@ type Config struct {
 	// ReserveStep). Reserve must store that value durably before it
 	// returns; after a restart, pass the stored value as SenderSequence.
 	// If Reserve fails, so does the operation that needed the number.
+	// Reserve is called with the context locked and must not call its
+	// methods.
 	Reserve func(next uint64) error
 	// ReserveStep is how many Sender Sequence Numbers each call to Reserve
-	// covers. The default is 1.
+	// covers. The default is 1, which stores the number before every
+	// message with a Partial IV.
 	ReserveStep uint64
 
 	// ReplayWindowSize is the number of Partial IVs the replay window
@@ -134,6 +137,8 @@ type Config struct {
 	// ReplayWindowLost, for a context restored without its replay window,
 	// makes the server check the freshness of the first request with the
 	// Echo option before accepting requests (RFC 8613, Appendix B.1.2).
+	// Until a client answers, every request, replayed or not, gets a
+	// challenge with a new Sender Sequence Number.
 	ReplayWindowLost bool
 }
 
@@ -247,6 +252,9 @@ func NewContext(cfg *Config) (*Context, error) {
 	if cfg.IDContext != nil {
 		c.idContext = bytes.Clone(cfg.IDContext)
 	}
+	if w := cfg.ReplayWindow; w != nil && w.Received&1 == 0 && *w != (ReplayWindow{}) {
+		return nil, errors.New("oscore: inconsistent replay window")
+	}
 	if cfg.ReplayWindow != nil {
 		c.window = *cfg.ReplayWindow
 		c.window.Received &= windowMask(size)
@@ -320,7 +328,10 @@ func (c *Context) nextPIV() ([]byte, error) {
 		return nil, ErrSequenceExhausted
 	}
 	if c.reserve != nil && c.ssn >= c.reserved {
-		next := min(c.ssn+c.step, maxSenderSequenceNumber+1)
+		next := uint64(maxSenderSequenceNumber + 1)
+		if c.step < next-c.ssn {
+			next = c.ssn + c.step
+		}
 		if err := c.reserve(next); err != nil {
 			return nil, fmt.Errorf("oscore: reserving Sender Sequence Numbers: %w", err)
 		}
