@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"errors"
+	"fmt"
 	"sync"
 )
+
+var errMalformedCode = fmt.Errorf("%w: wrong kind of CoAP code in the plaintext", ErrMalformed)
 
 var errUnexpectedObserve = errors.New("oscore: Observe option in a response to a request without one")
 
@@ -42,6 +45,9 @@ type Exchange struct {
 // encrypted. Block options in m are Inner, for block-wise transfer between
 // the endpoints; Outer Block options belong to the transport.
 func (c *Context) ProtectRequest(m *Message) (*Message, *Exchange, error) {
+	if !m.Code.request() && !m.Code.signaling() {
+		return nil, nil, ErrCode
+	}
 	piv, err := c.nextPIV()
 	if err != nil {
 		return nil, nil, err
@@ -99,6 +105,9 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if !inner.Code.request() && !inner.Code.signaling() {
+		return nil, nil, errMalformedCode
+	}
 	if v, ok := inner.option(Observe); ok && decodeUint(v) == 0 && !inner.Code.signaling() {
 		x.observe = true
 	}
@@ -145,6 +154,9 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 	if !x.server {
 		return nil, errors.New("oscore: ProtectResponse called on a client exchange")
+	}
+	if !m.Code.response() && !m.Code.signaling() {
+		return nil, ErrCode
 	}
 	x.mu.Lock()
 	defer x.mu.Unlock()
@@ -205,6 +217,9 @@ func (x *Exchange) UnprotectResponse(m *Message) (*Message, error) {
 	inner, err := c.open(m, nonce, c.recipient, c.aad(x.kid, x.piv))
 	if err != nil {
 		return nil, err
+	}
+	if !inner.Code.response() && !inner.Code.signaling() {
+		return nil, errMalformedCode
 	}
 	_, notification := inner.option(Observe)
 	notification = notification && !inner.Code.signaling()

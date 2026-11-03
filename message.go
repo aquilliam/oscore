@@ -44,6 +44,10 @@ func (c Code) String() string {
 
 func (c Code) signaling() bool { return c>>5 == 7 }
 
+func (c Code) request() bool { return c>>5 == 0 && c != 0 }
+
+func (c Code) response() bool { return c>>5 >= 2 && c>>5 <= 5 }
+
 // An OptionNumber identifies a CoAP option.
 type OptionNumber uint16
 

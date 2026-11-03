@@ -14,6 +14,7 @@ git clone --depth 1 --branch v4.3.5 https://github.com/obgm/libcoap.git
 cmake -S libcoap -B libcoap/build -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl \
   -DENABLE_OSCORE=ON -DENABLE_EXAMPLES=ON -DENABLE_DOCS=OFF -DENABLE_TESTS=OFF
 cmake --build libcoap/build
+# on macOS, add -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3) to the first cmake
 export LIBCOAP_BIN=$PWD/libcoap/build
 
 go test ./...

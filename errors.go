@@ -23,6 +23,10 @@ var (
 	// ErrNestedOSCORE is returned when the message to protect already has
 	// an OSCORE option.
 	ErrNestedOSCORE = errors.New("oscore: message already has an OSCORE option")
+	// ErrCode is returned when a request to protect does not have a request
+	// code or a response does not have a response code, other than a
+	// signaling code.
+	ErrCode = errors.New("oscore: wrong kind of CoAP code")
 	// ErrExchangeDone is returned when a response is protected or verified
 	// for an exchange that cannot have another one.
 	ErrExchangeDone = errors.New("oscore: exchange already has its response")

@@ -712,3 +712,36 @@ func TestConcurrent(t *testing.T) {
 		t.Errorf("window = %+v", w)
 	}
 }
+
+func TestCodes(t *testing.T) {
+	client, server := newPair(t, nil)
+	for _, code := range []Code{0, Content, 0x20} {
+		if _, _, err := client.ProtectRequest(&Message{Code: code}); !errors.Is(err, ErrCode) {
+			t.Errorf("request with code %v: err = %v", code, err)
+		}
+	}
+	_, cx, sx := exchange(t, client, server, get("a"))
+	for _, code := range []Code{0, GET, 0x20, 0xc0} {
+		if _, err := sx.ProtectResponse(&Message{Code: code}); !errors.Is(err, ErrCode) {
+			t.Errorf("response with code %v: err = %v", code, err)
+		}
+	}
+
+	// A response code inside a request, and a request code inside a
+	// response, are rejected.
+	piv, err := client.nextPIV()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := &optionValue{piv: piv, kid: client.senderID, hasKID: true}
+	m := &Message{Code: POST, Options: []Option{{Number: OSCORE, Value: opt.encode()}}}
+	m.Payload = client.sender.Seal(nil, client.nonce(client.senderID, piv), []byte{byte(Content)}, client.aad(client.senderID, piv))
+	if _, _, err := server.UnprotectRequest(m); !errors.Is(err, ErrMalformed) {
+		t.Errorf("response code in a request: err = %v", err)
+	}
+	r := &Message{Code: Changed, Options: []Option{{Number: OSCORE, Value: []byte{}}}}
+	r.Payload = server.sender.Seal(nil, sx.nonce, []byte{byte(GET)}, server.aad(sx.kid, sx.piv))
+	if _, err := cx.UnprotectResponse(r); !errors.Is(err, ErrMalformed) {
+		t.Errorf("request code in a response: err = %v", err)
+	}
+}
