@@ -209,6 +209,14 @@ func TestUnknownContext(t *testing.T) {
 	}
 }
 
+func TestLongIDContext(t *testing.T) {
+	for _, n := range []int{23, 24, 255} {
+		idContext := bytes.Repeat([]byte{7}, n)
+		client, server := newPair(t, func(c, s *Config) { c.IDContext, s.IDContext = idContext, idContext })
+		exchange(t, client, server, get("a"))
+	}
+}
+
 func TestEmptyKIDContext(t *testing.T) {
 	client, server := newPair(t, func(c, s *Config) { c.IDContext, s.IDContext = []byte{}, []byte{} })
 	out, _, err := client.ProtectRequest(get("a"))
@@ -628,6 +636,7 @@ func TestNewContextErrors(t *testing.T) {
 		"window size":     func(c *Config) { c.ReplayWindowSize = 65 },
 		"negative window": func(c *Config) { c.ReplayWindowSize = -1 },
 		"sequence":        func(c *Config) { c.SenderSequence = maxSenderSequenceNumber + 1 },
+		"long ID Context": func(c *Config) { c.IDContext = make([]byte, 256) },
 	} {
 		cfg := &Config{MasterSecret: []byte{1}, SenderID: []byte{1}, RecipientID: []byte{2}}
 		edit(cfg)

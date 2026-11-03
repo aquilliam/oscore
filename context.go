@@ -96,8 +96,8 @@ type Config struct {
 	// MasterSecret is required. MasterSalt may be empty.
 	MasterSecret []byte
 	MasterSalt   []byte
-	// IDContext is the ID Context, or nil for none. A client sends it as
-	// 'kid context' in every request; a server with several contexts for
+	// IDContext is the ID Context, at most 255 bytes, or nil for none. A
+	// client sends it as 'kid context' in every request; a server with several contexts for
 	// the same Recipient ID uses it to tell them apart.
 	IDContext []byte
 	// SenderID and RecipientID must differ and be at most NonceSize() - 6
@@ -194,6 +194,9 @@ func NewContext(cfg *Config) (*Context, error) {
 	if bytes.Equal(cfg.SenderID, cfg.RecipientID) {
 		return nil, errors.New("oscore: Sender ID and Recipient ID are equal")
 	}
+	if len(cfg.IDContext) > 255 {
+		return nil, errors.New("oscore: ID Context longer than 255 bytes")
+	}
 	if cfg.SenderSequence > maxSenderSequenceNumber {
 		return nil, errors.New("oscore: Sender Sequence Number out of range")
 	}
@@ -274,7 +277,7 @@ func kdfInfo(id, idContext []byte, alg Algorithm, typ string, length int) []byte
 	} else {
 		b = appendCBORBytes(b, idContext)
 	}
-	b = appendCBORInt(b, int64(alg))
+	b = appendCBORHead(b, 0, uint64(alg))
 	b = appendCBORHead(b, 3, uint64(len(typ)))
 	b = append(b, typ...)
 	return appendCBORHead(b, 0, uint64(length))
@@ -283,7 +286,7 @@ func kdfInfo(id, idContext []byte, alg Algorithm, typ string, length int) []byte
 // aad returns the AAD of RFC 8613, Section 5.4, with no Class I options.
 func (c *Context) aad(kid, piv []byte) []byte {
 	a := []byte{0x85, 0x01, 0x81}
-	a = appendCBORInt(a, int64(c.alg))
+	a = appendCBORHead(a, 0, uint64(c.alg))
 	a = appendCBORBytes(a, kid)
 	a = appendCBORBytes(a, piv)
 	a = append(a, 0x40)
@@ -425,13 +428,6 @@ func appendCBORHead(b []byte, major byte, n uint64) []byte {
 	}
 	return append(b, m|27, byte(n>>56), byte(n>>48), byte(n>>40), byte(n>>32),
 		byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
-}
-
-func appendCBORInt(b []byte, v int64) []byte {
-	if v < 0 {
-		return appendCBORHead(b, 1, uint64(-1-v))
-	}
-	return appendCBORHead(b, 0, uint64(v))
 }
 
 func appendCBORBytes(b, v []byte) []byte {
