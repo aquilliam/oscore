@@ -65,3 +65,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+
+  interop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Install aiocoap
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install "aiocoap[oscore]==0.4.17"
+      - name: Build libcoap
+        run: |
+          sudo apt-get update && sudo apt-get install -y libssl-dev
+          git clone --depth 1 --branch v4.3.5 https://github.com/obgm/libcoap.git "$RUNNER_TEMP/libcoap"
+          cmake -S "$RUNNER_TEMP/libcoap" -B "$RUNNER_TEMP/libcoap/build" -DENABLE_DTLS=ON \
+            -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DENABLE_EXAMPLES=ON -DENABLE_DOCS=OFF -DENABLE_TESTS=OFF
+          cmake --build "$RUNNER_TEMP/libcoap/build" -j4
+      - run: go vet ./... && go test -race -v ./...
+        working-directory: interop
+        env:
+          AIOCOAP_PYTHON: ${{ runner.temp }}/venv/bin/python
+          LIBCOAP_BIN: ${{ runner.temp }}/libcoap/build
