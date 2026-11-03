@@ -4,7 +4,7 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Until v1.0.0, minor versions may
 include breaking changes.
 
-## v0.1.0 (unreleased)
+## v0.1.0 (2026-11-03)
 
 First release: RFC 8613 except Appendix B.2 and Section 11.
 
