@@ -88,8 +88,11 @@ jobs:
           cmake -S "$RUNNER_TEMP/libcoap" -B "$RUNNER_TEMP/libcoap/build" -DENABLE_DTLS=ON \
             -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DENABLE_EXAMPLES=ON -DENABLE_DOCS=OFF -DENABLE_TESTS=OFF
           cmake --build "$RUNNER_TEMP/libcoap/build" -j4
+      - name: Build uoscore-uedhoc
+        run: interop/uoscore/build.sh
       - run: go vet ./... && go test -race -v ./...
         working-directory: interop
         env:
           AIOCOAP_PYTHON: ${{ runner.temp }}/venv/bin/python
           LIBCOAP_BIN: ${{ runner.temp }}/libcoap/build
+          UOSCORE_PEER: ${{ github.workspace }}/interop/.build/uoscore/peer

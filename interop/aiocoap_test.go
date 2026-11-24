@@ -12,6 +12,7 @@
 //	                  uv venv && uv pip install --require-hashes -r aiocoap/requirements.txt
 //	LIBCOAP_BIN       a directory with the coap-client and coap-server examples
 //	                  of libcoap 4.3.5, built with OSCORE
+//	UOSCORE_PEER      the output of uoscore/build.sh
 package interop
 
 import (
