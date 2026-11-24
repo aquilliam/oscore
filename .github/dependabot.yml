@@ -11,6 +11,9 @@ updates:
       - dependency-name: ossf/scorecard-action
         versions: ["2.6.0"]
   - package-ecosystem: gomod
-    directory: /
+    directories: [/, /interop]
     schedule:
       interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
