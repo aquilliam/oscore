@@ -125,8 +125,8 @@ type Config struct {
 	// returns; after a restart, pass the stored value as SenderSequence.
 	// If Reserve fails, so does the operation that needed the number.
 	// Reserve is called with the context locked and must not call its
-	// methods or those of its exchanges. The last value it is called with is 1<<40, and NewContext
-	// returns ErrSequenceExhausted for it.
+	// methods or those of its exchanges. The last value it is called with
+	// is 1<<40, and NewContext returns ErrSequenceExhausted for it.
 	Reserve func(next uint64) error
 	// ReserveStep is how many Sender Sequence Numbers each call to Reserve
 	// covers. The default is 1, which stores the number before every
@@ -138,7 +138,8 @@ type Config struct {
 	ReplayWindowSize int
 	// ReplayWindow restores a replay window saved with Context.ReplayWindow,
 	// or is nil for a context that has not received requests yet. It is not
-	// used if ReplayWindowLost is set.
+	// used if ReplayWindowLost is set. A window saved by v0.1.0 must not be
+	// restored.
 	ReplayWindow *ReplayWindow
 	// ReplayWindowLost, for a context restored without its replay window,
 	// makes the server check the freshness of the first request with the

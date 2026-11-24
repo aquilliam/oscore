@@ -14,8 +14,7 @@
 // Both endpoints derive a Context from the same Master Secret and Master
 // Salt, with their Sender and Recipient IDs swapped (NewContext). The
 // parameters usually come from a key exchange such as EDHOC (RFC 9528),
-// whose OSCORE parameters map to Config field by field, or are
-// provisioned out of band.
+// whose OSCORE parameters map to Config, or are provisioned out of band.
 //
 // A Sender Sequence Number must never be used twice with the same keys, and
 // a server must not accept a request twice. Two contexts created from the
@@ -40,7 +39,8 @@
 // A server finds the context of a request from its kid and kid context
 // with ParseRequestID, and verifies it with Context.UnprotectRequest. It
 // protects each response to that request with Exchange.ProtectResponse.
-// When verification fails, ErrorResponse gives the response to send.
+// When verification fails, ErrorResponse gives the response to send, if
+// any.
 //
 // # Observe and block-wise transfers
 //
@@ -58,5 +58,4 @@
 // of Section 11, with every AEAD algorithm of RFC 9053 and HKDF with SHA-256,
 // SHA-384 or SHA-512. Hop-Limit is an Outer option, as in
 // draft-ietf-core-oscore-capable-proxies. It does not implement Group OSCORE.
-// The API may change before v1.0.
 package oscore
