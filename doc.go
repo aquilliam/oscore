@@ -56,6 +56,7 @@
 //
 // The package implements RFC 8613 except Appendix B.2 and the HTTP mapping
 // of Section 11, with every AEAD algorithm of RFC 9053 and HKDF with SHA-256,
-// SHA-384 or SHA-512. It does not implement Group OSCORE. The API may change
-// before v1.0.
+// SHA-384 or SHA-512. Hop-Limit is an Outer option, as in
+// draft-ietf-core-oscore-capable-proxies. It does not implement Group OSCORE.
+// The API may change before v1.0.
 package oscore

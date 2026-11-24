@@ -128,6 +128,10 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 	}
 
 	c.mu.Lock()
+	if c.ssn > maxSenderSequenceNumber {
+		c.mu.Unlock()
+		return nil, nil, ErrSequenceExhausted
+	}
 	if c.lost {
 		echo, ok := inner.option(Echo)
 		if ok && c.echo != nil && bytes.Equal(echo, c.echo) {
@@ -185,6 +189,9 @@ func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 		return nil, ErrObserve
 	}
 	c := x.c
+	if c.SenderSequence() > maxSenderSequenceNumber {
+		return nil, ErrSequenceExhausted
+	}
 	nonce := x.nonce
 	opt := &optionValue{}
 	if x.fresh || x.responses > 0 {

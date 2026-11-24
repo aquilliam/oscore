@@ -18,7 +18,9 @@ var (
 	// ErrDecrypt is returned when a message fails to decrypt.
 	ErrDecrypt = errors.New("oscore: decryption failed")
 	// ErrSequenceExhausted is returned when a context has used all its
-	// Sender Sequence Numbers and a new context is needed.
+	// Sender Sequence Numbers and a new context is needed. The context then
+	// protects no messages and accepts no requests (RFC 8613, Section
+	// 7.2.1), and ErrorResponse is the one for ErrUnknownContext.
 	ErrSequenceExhausted = errors.New("oscore: Sender Sequence Numbers exhausted")
 	// ErrNestedOSCORE is returned when the message to protect already has
 	// an OSCORE option.
@@ -71,7 +73,7 @@ func ErrorResponse(err error) *Message {
 	switch {
 	case errors.Is(err, ErrMalformed):
 		code, diag = BadOption, "Failed to decode COSE"
-	case errors.Is(err, ErrUnknownContext):
+	case errors.Is(err, ErrUnknownContext), errors.Is(err, ErrSequenceExhausted):
 		code, diag = Unauthorized, "Security context not found"
 	case errors.Is(err, ErrReplay):
 		code, diag = Unauthorized, "Replay detected"
