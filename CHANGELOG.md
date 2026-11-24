@@ -20,18 +20,18 @@ Breaking changes:
   and Recipient IDs do not fit in an OSCORE option of 255 bytes. Longer OSCORE
   options are rejected with `ErrMalformed`.
 - `NewContext` returns `ErrSequenceExhausted` for a `SenderSequence` stored
-  after the last Sender Sequence Number, and `ProtectResponse` returns it once
-  the context has used them all.
-- `ProtectResponse` returns an error for an Observe option in a response to a
-  request that is not an Observe registration.
+  after the last Sender Sequence Number. `ProtectResponse` and
+  `UnprotectRequest` return it once the context has used them all.
+- `ProtectResponse` returns `ErrObserve` for an Observe option in a response to
+  a request that is not an Observe registration, and so does
+  `UnprotectResponse` for such a response.
 
 Fixes:
 
 - A replay window restored with a larger `ReplayWindowSize` no longer accepts
-  requests received before it was saved. Windows saved by v0.1.0 must not be
-  restored with a larger size.
+  requests received before it was saved. A window saved by v0.1.0 must be
+  restored with the size it was saved with.
 - A notification received after its observation has ended is an `ErrReplay`.
-- An Outer Class U option is dropped if the same option is in the plaintext.
 - The host in an Outer Proxy-Uri keeps its percent-encoding.
 
 Other changes:

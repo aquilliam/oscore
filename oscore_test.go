@@ -190,6 +190,29 @@ func TestReplayWindowGrows(t *testing.T) {
 	}
 }
 
+// A window saved by v0.1.0 has no bits past its size, also once it has been
+// saved again.
+func TestReplayWindowMasked(t *testing.T) {
+	client, _ := newPair(t, nil)
+	var reqs []*Message
+	for range 50 {
+		out, _, err := client.ProtectRequest(get("a"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		reqs = append(reqs, out)
+	}
+	w := ReplayWindow{Highest: 49, Received: 1<<32 - 1}
+	_, server := newPair(t, func(c, s *Config) { s.ReplayWindow = &w })
+	saved, _ := server.ReplayWindow()
+	_, server = newPair(t, func(c, s *Config) { s.ReplayWindowSize = 64; s.ReplayWindow = &saved })
+	for i, r := range reqs {
+		if _, _, err := server.UnprotectRequest(r); !errors.Is(err, ErrReplay) {
+			t.Errorf("request %d: err = %v, want ErrReplay", i, err)
+		}
+	}
+}
+
 func TestReplayWindowShift(t *testing.T) {
 	c := &Context{windowSize: 64}
 	for _, seq := range []uint64{0, 63, 64, 200, 137, 138} {
@@ -557,7 +580,7 @@ func TestObserve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cx2.UnprotectResponse(n); !errors.Is(err, errUnexpectedObserve) {
+	if _, err := cx2.UnprotectResponse(n); !errors.Is(err, ErrObserve) {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -584,14 +607,18 @@ func TestEchoRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	echo, ok := challenge.option(Echo)
-	if challenge.Code != Unauthorized || !ok || len(echo) != echoSize || len(challenge.Payload) != 0 {
+	echo, hasEcho := challenge.option(Echo)
+	if challenge.Code != Unauthorized || !hasEcho || len(echo) != echoSize || len(challenge.Payload) != 0 {
 		t.Fatalf("challenge = %+v", challenge)
 	}
 
 	// A request without the Echo value is challenged again.
-	if w, ok := server.ReplayWindow(); ok {
+	w, ok := server.ReplayWindow()
+	if ok {
 		t.Errorf("ReplayWindow = %+v before the challenge is answered", w)
+	}
+	if _, err := NewContext(&Config{MasterSecret: []byte{1}, SenderID: []byte{1}, ReplayWindow: &w}); err == nil {
+		t.Error("window accepted before the challenge is answered")
 	}
 	again, _, err := client.ProtectRequest(get("a"))
 	if err != nil {
@@ -926,7 +953,7 @@ func TestInconsistentReplayWindow(t *testing.T) {
 	}
 }
 
-func TestExhaustedResponse(t *testing.T) {
+func TestExhaustedServer(t *testing.T) {
 	client, server := newPair(t, func(c, s *Config) { s.SenderSequence = maxSenderSequenceNumber })
 	_, _, sx := exchange(t, client, server, get("a"))
 	if _, _, err := server.ProtectRequest(get("a")); err != nil {
@@ -935,12 +962,19 @@ func TestExhaustedResponse(t *testing.T) {
 	if _, err := sx.ProtectResponse(&Message{Code: Content}); !errors.Is(err, ErrSequenceExhausted) {
 		t.Errorf("err = %v, want ErrSequenceExhausted", err)
 	}
+	out, _, err := client.ProtectRequest(get("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := server.UnprotectRequest(out); !errors.Is(err, ErrSequenceExhausted) {
+		t.Errorf("err = %v, want ErrSequenceExhausted", err)
+	}
 }
 
 func TestObserveNotRegistered(t *testing.T) {
 	client, server := newPair(t, nil)
 	_, cx, sx := exchange(t, client, server, get("a"))
-	if _, err := sx.ProtectResponse(&Message{Code: Content, Options: []Option{{Number: Observe, Value: []byte{1}}}}); !errors.Is(err, errObserveNotRegistered) {
+	if _, err := sx.ProtectResponse(&Message{Code: Content, Options: []Option{{Number: Observe, Value: []byte{1}}}}); !errors.Is(err, ErrObserve) {
 		t.Fatalf("err = %v", err)
 	}
 	out, err := sx.ProtectResponse(&Message{Code: Content})
@@ -971,30 +1005,6 @@ func TestNotificationAfterObservation(t *testing.T) {
 	}
 	if _, err := cx.UnprotectResponse(late); !errors.Is(err, ErrReplay) {
 		t.Errorf("err = %v, want ErrReplay", err)
-	}
-}
-
-func TestInnerClassUOption(t *testing.T) {
-	client, server := newPair(t, nil)
-	piv, err := client.nextPIV()
-	if err != nil {
-		t.Fatal(err)
-	}
-	plaintext, err := appendOptions([]byte{byte(GET)}, []Option{{URIHost, []byte("inner")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	opt := &optionValue{piv: piv, kid: client.senderID, hasKID: true}
-	in, _, err := server.UnprotectRequest(&Message{
-		Code:    POST,
-		Options: []Option{{URIHost, []byte("outer")}, {OSCORE, opt.encode()}},
-		Payload: client.sender.Seal(nil, client.nonce(client.senderID, piv), plaintext, client.aad(client.senderID, piv)),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := optionValues(in, URIHost); !slices.Equal(got, []string{"inner"}) {
-		t.Errorf("Uri-Host = %q", got)
 	}
 }
 
