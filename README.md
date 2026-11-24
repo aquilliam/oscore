@@ -57,7 +57,11 @@ resp, err := exchange.UnprotectResponse(protectedResp)
 
 // Server
 id, err := oscore.ParseRequestID(protected)
-server, ok := contexts[string(id.KID)] // if !ok, send oscore.ErrorResponse(oscore.ErrUnknownContext)
+server, ok := contexts[string(id.KID)]
+if !ok {
+	// send oscore.ErrorResponse(oscore.ErrUnknownContext)
+	return
+}
 req, exchange, err := server.UnprotectRequest(protected)
 if err != nil {
 	// send oscore.ErrorResponse(err), if not nil

@@ -13,7 +13,8 @@ Breaking changes:
 - `Context.ReplayWindow` also returns whether the window is known. It is not
   while `ReplayWindowLost` is set and no client has answered the challenge.
   Saving it then made the context accept old requests after the next restart;
-  `NewContext` now rejects the window returned in that state.
+  `NewContext` now rejects the window returned in that state unless
+  `ReplayWindowLost` is set again.
 - `NewContext` returns an error if `ReplayWindowLost` is set without
   `Reserve`. Challenges use Sender Sequence Numbers, and without `Reserve`
   every restart used the same ones again.
@@ -31,7 +32,6 @@ Fixes:
 - A replay window restored with a larger `ReplayWindowSize` no longer accepts
   requests received before it was saved. A window saved by v0.1.0 must be
   restored with the size it was saved with.
-- An Outer Class U option is dropped if the same option is in the plaintext.
 - A notification received after its observation has ended is an `ErrReplay`.
 - The host in an Outer Proxy-Uri keeps its percent-encoding.
 
