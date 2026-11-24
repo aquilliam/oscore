@@ -267,6 +267,10 @@ func NewContext(cfg *Config) (*Context, error) {
 	}
 	if cfg.ReplayWindow != nil {
 		c.window = *cfg.ReplayWindow
+		// Windows saved by v0.1.0 have no bits past their size.
+		if c.window.Received != 0 {
+			c.window.Received |= ^uint64(0) << size
+		}
 	}
 	return c, nil
 }
@@ -372,12 +376,13 @@ func (c *Context) SenderSequence() uint64 {
 // the context and passed back in Config.ReplayWindow. It must not be used
 // to restore a context that has received requests since it was saved. ok is
 // false if the window was lost and no client has answered the challenge
-// yet: the context must then be restored with Config.ReplayWindowLost.
+// yet: the context must then be restored with Config.ReplayWindowLost, and
+// NewContext rejects w.
 func (c *Context) ReplayWindow() (w ReplayWindow, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.lost {
-		return ReplayWindow{}, false
+		return ReplayWindow{Received: 1 << 1}, false
 	}
 	return c.window, true
 }

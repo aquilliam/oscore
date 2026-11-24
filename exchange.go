@@ -5,17 +5,12 @@ import (
 	"crypto/cipher"
 	"errors"
 	"fmt"
-	"slices"
 	"sync"
 )
 
 var errMalformedCode = fmt.Errorf("%w: wrong kind of CoAP code in the plaintext", ErrMalformed)
 
 var errOuterProxyURI = fmt.Errorf("%w: Outer Proxy-Uri with a path or query", ErrMalformed)
-
-var errObserveNotRegistered = errors.New("oscore: Observe option in a response to a request that is not an Observe registration")
-
-var errUnexpectedObserve = errors.New("oscore: Observe option in a response to a request without one")
 
 // An Exchange binds the responses to a request to that request (RFC 8613,
 // Section 7.1). A client gets one from ProtectRequest and verifies the
@@ -89,7 +84,7 @@ func (c *Context) ProtectRequest(m *Message) (*Message, *Exchange, error) {
 // If it fails, the request must not be processed; ErrorResponse(err) is the
 // response to send, if any. If several contexts match the request, try the
 // next one on ErrDecrypt or ErrReplay, as a replay is detected before the
-// request is decrypted.
+// request is decrypted, and answer with ErrReplay if any returned it.
 func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 	v, err := requestOption(m)
 	if err != nil {
@@ -106,6 +101,9 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 	}
 	if !c.matches(v) {
 		return nil, nil, ErrUnknownContext
+	}
+	if c.exhausted() {
+		return nil, nil, ErrSequenceExhausted
 	}
 	seq := decodeUint(v.piv)
 	c.mu.Lock()
@@ -171,8 +169,7 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 // The first response reuses the request's nonce; later notifications to an
 // Observe registration get a Partial IV of their own. A response with an
 // Observe option is protected as a notification, and one without ends the
-// observation. Observe is an error if the request was not an Observe
-// registration.
+// observation.
 func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 	if !x.server {
 		return nil, errors.New("oscore: ProtectResponse called on a client exchange")
@@ -188,7 +185,7 @@ func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 	_, notification := m.option(Observe)
 	notification = notification && !m.Code.signaling()
 	if notification && !x.observe {
-		return nil, errObserveNotRegistered
+		return nil, ErrObserve
 	}
 	c := x.c
 	if c.exhausted() {
@@ -264,7 +261,7 @@ func (x *Exchange) UnprotectResponse(m *Message) (*Message, error) {
 	case !x.observe && x.responses > 0:
 		return nil, ErrReplay
 	case !x.observe && notification:
-		return nil, errUnexpectedObserve
+		return nil, ErrObserve
 	case v.piv == nil:
 		if x.nonceUsed || x.notified {
 			return nil, ErrReplay
@@ -312,7 +309,7 @@ func (c *Context) seal(m *Message, request bool, nonce []byte, aead cipher.AEAD,
 
 // open decrypts the OSCORE message m and returns the decrypted message: the
 // Code, options and payload from the plaintext, with the Outer Class U
-// options other than OSCORE and those that are also in the plaintext.
+// options other than OSCORE.
 func (c *Context) open(m *Message, nonce []byte, aead cipher.AEAD, aad []byte) (*Message, error) {
 	plaintext, err := aead.Open(nil, nonce, m.Payload, aad)
 	if err != nil {
@@ -325,9 +322,9 @@ func (c *Context) open(m *Message, nonce []byte, aead cipher.AEAD, aad []byte) (
 	if err != nil {
 		return nil, err
 	}
-	inner := &Message{Code: Code(plaintext[0]), Options: opts, Payload: payload}
+	inner := &Message{Code: Code(plaintext[0]), Payload: payload}
 	for _, o := range m.Options {
-		if classU(o.Number) && o.Number != OSCORE && !inner.Code.signaling() && !slices.ContainsFunc(opts, func(i Option) bool { return i.Number == o.Number }) {
+		if classU(o.Number) && o.Number != OSCORE && !inner.Code.signaling() {
 			inner.Options = append(inner.Options, Option{Number: o.Number, Value: bytes.Clone(o.Value)})
 		}
 	}
@@ -336,7 +333,7 @@ func (c *Context) open(m *Message, nonce []byte, aead cipher.AEAD, aad []byte) (
 			return nil, errMalformedOptions
 		}
 	}
-	inner.Options = sortOptions(inner.Options)
+	inner.Options = sortOptions(append(inner.Options, opts...))
 	return inner, nil
 }
 

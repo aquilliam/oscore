@@ -18,7 +18,8 @@ var (
 	// ErrDecrypt is returned when a message fails to decrypt.
 	ErrDecrypt = errors.New("oscore: decryption failed")
 	// ErrSequenceExhausted is returned when a context has used all its
-	// Sender Sequence Numbers and a new context is needed.
+	// Sender Sequence Numbers and a new context is needed. The context then
+	// protects no messages and accepts no requests.
 	ErrSequenceExhausted = errors.New("oscore: Sender Sequence Numbers exhausted")
 	// ErrNestedOSCORE is returned when the message to protect already has
 	// an OSCORE option.
@@ -31,6 +32,9 @@ var (
 	// code or a response does not have a response code, other than a
 	// signaling code.
 	ErrCode = errors.New("oscore: wrong kind of CoAP code")
+	// ErrObserve is returned for a response with an Observe option to a
+	// request that is not an Observe registration.
+	ErrObserve = errors.New("oscore: Observe option in a response to a request that is not an Observe registration")
 	// ErrExchangeDone is returned when a response is protected for an
 	// exchange that cannot have another one.
 	ErrExchangeDone = errors.New("oscore: exchange already has its response")
