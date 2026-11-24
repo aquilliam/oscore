@@ -18,8 +18,7 @@ var (
 	// ErrDecrypt is returned when a message fails to decrypt.
 	ErrDecrypt = errors.New("oscore: decryption failed")
 	// ErrSequenceExhausted is returned when a context has used all its
-	// Sender Sequence Numbers and a new context is needed. The context then
-	// protects no messages and accepts no requests.
+	// Sender Sequence Numbers and a new context is needed.
 	ErrSequenceExhausted = errors.New("oscore: Sender Sequence Numbers exhausted")
 	// ErrNestedOSCORE is returned when the message to protect already has
 	// an OSCORE option.

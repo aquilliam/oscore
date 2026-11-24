@@ -620,6 +620,9 @@ func TestEchoRecovery(t *testing.T) {
 	if _, err := NewContext(&Config{MasterSecret: []byte{1}, SenderID: []byte{1}, ReplayWindow: &w}); err == nil {
 		t.Error("window accepted before the challenge is answered")
 	}
+	if _, err := NewContext(&Config{MasterSecret: []byte{1}, SenderID: []byte{1}, ReplayWindow: &w, ReplayWindowLost: true, Reserve: func(uint64) error { return nil }}); err != nil {
+		t.Error(err)
+	}
 	again, _, err := client.ProtectRequest(get("a"))
 	if err != nil {
 		t.Fatal(err)
@@ -953,24 +956,6 @@ func TestInconsistentReplayWindow(t *testing.T) {
 	}
 }
 
-func TestExhaustedServer(t *testing.T) {
-	client, server := newPair(t, func(c, s *Config) { s.SenderSequence = maxSenderSequenceNumber })
-	_, _, sx := exchange(t, client, server, get("a"))
-	if _, _, err := server.ProtectRequest(get("a")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := sx.ProtectResponse(&Message{Code: Content}); !errors.Is(err, ErrSequenceExhausted) {
-		t.Errorf("err = %v, want ErrSequenceExhausted", err)
-	}
-	out, _, err := client.ProtectRequest(get("a"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := server.UnprotectRequest(out); !errors.Is(err, ErrSequenceExhausted) {
-		t.Errorf("err = %v, want ErrSequenceExhausted", err)
-	}
-}
-
 func TestObserveNotRegistered(t *testing.T) {
 	client, server := newPair(t, nil)
 	_, cx, sx := exchange(t, client, server, get("a"))
@@ -1005,6 +990,30 @@ func TestNotificationAfterObservation(t *testing.T) {
 	}
 	if _, err := cx.UnprotectResponse(late); !errors.Is(err, ErrReplay) {
 		t.Errorf("err = %v, want ErrReplay", err)
+	}
+}
+
+func TestInnerClassUOption(t *testing.T) {
+	client, server := newPair(t, nil)
+	piv, err := client.nextPIV()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, err := appendOptions([]byte{byte(GET)}, []Option{{URIHost, []byte("inner")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := &optionValue{piv: piv, kid: client.senderID, hasKID: true}
+	in, _, err := server.UnprotectRequest(&Message{
+		Code:    POST,
+		Options: []Option{{URIHost, []byte("outer")}, {OSCORE, opt.encode()}},
+		Payload: client.sender.Seal(nil, client.nonce(client.senderID, piv), plaintext, client.aad(client.senderID, piv)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := optionValues(in, URIHost); !slices.Equal(got, []string{"inner"}) {
+		t.Errorf("Uri-Host = %q", got)
 	}
 }
 

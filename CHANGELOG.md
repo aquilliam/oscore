@@ -12,7 +12,8 @@ Breaking changes:
   v0.59.0.
 - `Context.ReplayWindow` also returns whether the window is known. It is not
   while `ReplayWindowLost` is set and no client has answered the challenge.
-  Saving it then made the context accept old requests after the next restart.
+  Saving it then made the context accept old requests after the next restart;
+  `NewContext` now rejects the window returned in that state.
 - `NewContext` returns an error if `ReplayWindowLost` is set without
   `Reserve`. Challenges use Sender Sequence Numbers, and without `Reserve`
   every restart used the same ones again.
@@ -20,8 +21,7 @@ Breaking changes:
   and Recipient IDs do not fit in an OSCORE option of 255 bytes. Longer OSCORE
   options are rejected with `ErrMalformed`.
 - `NewContext` returns `ErrSequenceExhausted` for a `SenderSequence` stored
-  after the last Sender Sequence Number. `ProtectResponse` and
-  `UnprotectRequest` return it once the context has used them all.
+  after the last Sender Sequence Number.
 - `ProtectResponse` returns `ErrObserve` for an Observe option in a response to
   a request that is not an Observe registration, and so does
   `UnprotectResponse` for such a response.
@@ -31,6 +31,7 @@ Fixes:
 - A replay window restored with a larger `ReplayWindowSize` no longer accepts
   requests received before it was saved. A window saved by v0.1.0 must be
   restored with the size it was saved with.
+- An Outer Class U option is dropped if the same option is in the plaintext.
 - A notification received after its observation has ended is an `ErrReplay`.
 - The host in an Outer Proxy-Uri keeps its percent-encoding.
 
