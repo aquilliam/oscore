@@ -6,7 +6,7 @@ skipped unless its peer is set up:
 
 ```sh
 # aiocoap
-uv venv && uv pip install "aiocoap[oscore]==0.4.17"
+uv venv && uv pip install --require-hashes -r aiocoap/requirements.txt
 export AIOCOAP_PYTHON=$PWD/.venv/bin/python
 
 # libcoap, built with OpenSSL
