@@ -4,10 +4,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      codeql-action:
+        patterns: ["github/codeql-action/*"]
+    ignore:
+      - dependency-name: ossf/scorecard-action
+        versions: ["2.6.0"]
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: weekly
-    ignore:
-      - dependency-name: golang.org/x/crypto
-        versions: [">= 0.56.0"]

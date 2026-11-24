@@ -12,7 +12,7 @@ jobs:
   test:
     strategy:
       matrix:
-        go: ['1.25', oldstable, stable]
+        go: ['1.26', stable]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -78,11 +78,13 @@ jobs:
       - name: Install aiocoap
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install "aiocoap[oscore]==0.4.17"
+          "$RUNNER_TEMP/venv/bin/pip" install -q --require-hashes -r interop/aiocoap/requirements.txt
       - name: Build libcoap
         run: |
           sudo apt-get update && sudo apt-get install -y libssl-dev
-          git clone --depth 1 --branch v4.3.5 https://github.com/obgm/libcoap.git "$RUNNER_TEMP/libcoap"
+          git init -q "$RUNNER_TEMP/libcoap"
+          git -C "$RUNNER_TEMP/libcoap" fetch -q --depth 1 https://github.com/obgm/libcoap.git 7cf7465b784baded4de183290c547d582becfd28 # v4.3.5
+          git -C "$RUNNER_TEMP/libcoap" checkout -q FETCH_HEAD
           cmake -S "$RUNNER_TEMP/libcoap" -B "$RUNNER_TEMP/libcoap/build" -DENABLE_DTLS=ON \
             -DDTLS_BACKEND=openssl -DENABLE_OSCORE=ON -DENABLE_EXAMPLES=ON -DENABLE_DOCS=OFF -DENABLE_TESTS=OFF
           cmake --build "$RUNNER_TEMP/libcoap/build" -j4
