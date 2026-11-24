@@ -369,7 +369,7 @@ func (c *Context) SenderSequence() uint64 {
 // to restore a context that has received requests since it was saved. ok is
 // false if the window was lost and no client has answered the challenge
 // yet: the context must then be restored with Config.ReplayWindowLost, and
-// NewContext rejects w.
+// NewContext rejects w without it.
 func (c *Context) ReplayWindow() (w ReplayWindow, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

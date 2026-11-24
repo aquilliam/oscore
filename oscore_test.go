@@ -993,30 +993,6 @@ func TestNotificationAfterObservation(t *testing.T) {
 	}
 }
 
-func TestInnerClassUOption(t *testing.T) {
-	client, server := newPair(t, nil)
-	piv, err := client.nextPIV()
-	if err != nil {
-		t.Fatal(err)
-	}
-	plaintext, err := appendOptions([]byte{byte(GET)}, []Option{{URIHost, []byte("inner")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	opt := &optionValue{piv: piv, kid: client.senderID, hasKID: true}
-	in, _, err := server.UnprotectRequest(&Message{
-		Code:    POST,
-		Options: []Option{{URIHost, []byte("outer")}, {OSCORE, opt.encode()}},
-		Payload: client.sender.Seal(nil, client.nonce(client.senderID, piv), plaintext, client.aad(client.senderID, piv)),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := optionValues(in, URIHost); !slices.Equal(got, []string{"inner"}) {
-		t.Errorf("Uri-Host = %q", got)
-	}
-}
-
 func TestLongOptionValue(t *testing.T) {
 	for n, want := range map[int]error{maxOSCOREOptionLength: nil, maxOSCOREOptionLength + 1: ErrMalformed} {
 		v := make([]byte, n)

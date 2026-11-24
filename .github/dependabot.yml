@@ -13,7 +13,9 @@ updates:
   - package-ecosystem: gomod
     directories: [/, /interop]
     allow:
-      - dependency-type: all
+      - dependency-type: direct
+      - dependency-name: golang.org/x/crypto
+        dependency-type: all
     schedule:
       interval: weekly
     groups:
