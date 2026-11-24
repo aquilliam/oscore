@@ -72,7 +72,7 @@ A context set up with [EDHOC](https://github.com/aquilliam/edhoc) takes its
 
 ## Go versions
 
-Go 1.25 or later. CI tests 1.25 and the two latest releases.
+Go 1.26 or later. CI tests 1.26 and the latest release.
 
 ## Security
 
