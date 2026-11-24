@@ -22,7 +22,9 @@ Breaking changes:
   and Recipient IDs do not fit in an OSCORE option of 255 bytes. Longer OSCORE
   options are rejected with `ErrMalformed`.
 - `NewContext` returns `ErrSequenceExhausted` for a `SenderSequence` stored
-  after the last Sender Sequence Number.
+  after the last Sender Sequence Number. `ProtectResponse` and
+  `UnprotectRequest` return it once the context has used them all, and
+  `ErrorResponse` answers it like `ErrUnknownContext`.
 - `ProtectResponse` returns `ErrObserve` for an Observe option in a response to
   a request that is not an Observe registration, and so does
   `UnprotectResponse` for such a response.
@@ -37,6 +39,7 @@ Fixes:
 
 Other changes:
 
+- The interop tests also run against uoscore-uedhoc.
 - The documentation says what a restored context must set, and that a context
   must be created only once from the same parameters.
 

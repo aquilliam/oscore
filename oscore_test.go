@@ -956,6 +956,43 @@ func TestInconsistentReplayWindow(t *testing.T) {
 	}
 }
 
+func TestExhaustedServer(t *testing.T) {
+	client, server := newPair(t, func(c, s *Config) { s.SenderSequence = maxSenderSequenceNumber })
+	_, _, sx := exchange(t, client, server, get("a"))
+	replay, _, err := client.ProtectRequest(get("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := server.UnprotectRequest(replay); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := server.ProtectRequest(get("a")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sx.ProtectResponse(&Message{Code: Content}); !errors.Is(err, ErrSequenceExhausted) {
+		t.Errorf("response: err = %v", err)
+	}
+	out, _, err := client.ProtectRequest(get("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = server.UnprotectRequest(out)
+	if !errors.Is(err, ErrSequenceExhausted) {
+		t.Fatalf("request: err = %v", err)
+	}
+	if r := ErrorResponse(err); r == nil || r.Code != Unauthorized || string(r.Payload) != "Security context not found" {
+		t.Errorf("response = %+v", r)
+	}
+	// A replay, or a request for another context, has its own error.
+	if _, _, err := server.UnprotectRequest(replay); !errors.Is(err, ErrReplay) {
+		t.Errorf("replay: err = %v", err)
+	}
+	out.Payload[0] ^= 1
+	if _, _, err := server.UnprotectRequest(out); !errors.Is(err, ErrDecrypt) {
+		t.Errorf("other key: err = %v", err)
+	}
+}
+
 func TestObserveNotRegistered(t *testing.T) {
 	client, server := newPair(t, nil)
 	_, cx, sx := exchange(t, client, server, get("a"))
