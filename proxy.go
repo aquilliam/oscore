@@ -35,5 +35,5 @@ func splitProxyURI(s string) (string, []Option, error) {
 			opts = append(opts, Option{Number: URIQuery, Value: []byte(v)})
 		}
 	}
-	return u.Scheme + "://" + u.Host, opts, nil
+	return (&url.URL{Scheme: u.Scheme, Host: u.Host}).String(), opts, nil
 }

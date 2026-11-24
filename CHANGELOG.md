@@ -4,6 +4,41 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Until v1.0.0, minor versions may
 include breaking changes.
 
+## Unreleased
+
+Breaking changes:
+
+- Go 1.26 or later is required, and `golang.org/x/crypto` is updated to
+  v0.59.0.
+- `Context.ReplayWindow` also returns whether the window is known. It is not
+  while `ReplayWindowLost` is set and no client has answered the challenge.
+  Saving it then made the context accept old requests after the next restart.
+- `NewContext` returns an error if `ReplayWindowLost` is set without
+  `Reserve`. Challenges use Sender Sequence Numbers, and without `Reserve`
+  every restart used the same ones again.
+- `NewContext` returns an error if the ID Context and the longer of the Sender
+  and Recipient IDs do not fit in an OSCORE option of 255 bytes. Longer OSCORE
+  options are rejected with `ErrMalformed`.
+- `NewContext` returns `ErrSequenceExhausted` for a `SenderSequence` stored
+  after the last Sender Sequence Number, and `ProtectResponse` returns it once
+  the context has used them all.
+- `ProtectResponse` returns an error for an Observe option in a response to a
+  request that is not an Observe registration.
+
+Fixes:
+
+- A replay window restored with a larger `ReplayWindowSize` no longer accepts
+  requests received before it was saved. Windows saved by v0.1.0 must not be
+  restored with a larger size.
+- A notification received after its observation has ended is an `ErrReplay`.
+- An Outer Class U option is dropped if the same option is in the plaintext.
+- The host in an Outer Proxy-Uri keeps its percent-encoding.
+
+Other changes:
+
+- The documentation says what a restored context must set, and that a context
+  must be created only once from the same parameters.
+
 ## v0.1.0 (2026-11-03)
 
 First release: RFC 8613 except Appendix B.2 and Section 11.

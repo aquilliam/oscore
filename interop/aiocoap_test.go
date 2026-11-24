@@ -250,6 +250,7 @@ func TestAiocoapClientGoServer(t *testing.T) {
 	t.Run("Echo recovery", func(t *testing.T) {
 		cfg := setups[0].config(serverID, clientID)
 		cfg.ReplayWindowLost = true
+		cfg.Reserve = func(uint64) error { return nil }
 		runAiocoapClient(t, cfg, setups[0])
 	})
 }
