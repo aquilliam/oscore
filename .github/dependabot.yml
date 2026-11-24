@@ -12,6 +12,8 @@ updates:
         versions: ["2.6.0"]
   - package-ecosystem: gomod
     directories: [/, /interop]
+    allow:
+      - dependency-type: all
     schedule:
       interval: weekly
     groups:

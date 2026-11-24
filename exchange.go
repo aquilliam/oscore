@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 )
 
@@ -79,7 +80,8 @@ func (c *Context) ProtectRequest(m *Message) (*Message, *Exchange, error) {
 //
 // The decrypted request has the Code, payload and Inner options of the
 // original request, and the Outer Uri-Host, Uri-Port, Proxy-Uri,
-// Proxy-Scheme, Hop-Limit and EDHOC options of m, which are not protected.
+// Proxy-Scheme, Hop-Limit and EDHOC options of m, which are not protected,
+// except those that are also Inner options.
 //
 // If it fails, the request must not be processed; ErrorResponse(err) is the
 // response to send, if any. If several contexts match the request, try the
@@ -101,9 +103,6 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 	}
 	if !c.matches(v) {
 		return nil, nil, ErrUnknownContext
-	}
-	if c.exhausted() {
-		return nil, nil, ErrSequenceExhausted
 	}
 	seq := decodeUint(v.piv)
 	c.mu.Lock()
@@ -188,9 +187,6 @@ func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 		return nil, ErrObserve
 	}
 	c := x.c
-	if c.exhausted() {
-		return nil, ErrSequenceExhausted
-	}
 	nonce := x.nonce
 	opt := &optionValue{}
 	if x.fresh || x.responses > 0 {
@@ -216,7 +212,8 @@ func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 // of a client's exchange (RFC 8613, Section 8.4). It returns the decrypted
 // response. If it fails, the response must be ignored. Like a decrypted
 // request, the response has the Outer Uri-Host, Uri-Port, Proxy-Uri,
-// Proxy-Scheme, Hop-Limit and EDHOC options of m, which are not protected.
+// Proxy-Scheme, Hop-Limit and EDHOC options of m, which are not protected,
+// except those that are also Inner options.
 //
 // For an Observe registration, a notification is accepted only if it is
 // newer than every notification accepted before (RFC 8613, Section 7.4.1),
@@ -309,7 +306,7 @@ func (c *Context) seal(m *Message, request bool, nonce []byte, aead cipher.AEAD,
 
 // open decrypts the OSCORE message m and returns the decrypted message: the
 // Code, options and payload from the plaintext, with the Outer Class U
-// options other than OSCORE.
+// options other than OSCORE and those that are also in the plaintext.
 func (c *Context) open(m *Message, nonce []byte, aead cipher.AEAD, aad []byte) (*Message, error) {
 	plaintext, err := aead.Open(nil, nonce, m.Payload, aad)
 	if err != nil {
@@ -324,7 +321,7 @@ func (c *Context) open(m *Message, nonce []byte, aead cipher.AEAD, aad []byte) (
 	}
 	inner := &Message{Code: Code(plaintext[0]), Payload: payload}
 	for _, o := range m.Options {
-		if classU(o.Number) && o.Number != OSCORE && !inner.Code.signaling() {
+		if classU(o.Number) && o.Number != OSCORE && !inner.Code.signaling() && !slices.ContainsFunc(opts, func(i Option) bool { return i.Number == o.Number }) {
 			inner.Options = append(inner.Options, Option{Number: o.Number, Value: bytes.Clone(o.Value)})
 		}
 	}

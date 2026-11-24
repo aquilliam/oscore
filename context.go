@@ -137,7 +137,8 @@ type Config struct {
 	// tracks, from 1 to 64. The default is 32.
 	ReplayWindowSize int
 	// ReplayWindow restores a replay window saved with Context.ReplayWindow,
-	// or is nil for a context that has not received requests yet.
+	// or is nil for a context that has not received requests yet. It is not
+	// used if ReplayWindowLost is set.
 	ReplayWindow *ReplayWindow
 	// ReplayWindowLost, for a context restored without its replay window,
 	// makes the server check the freshness of the first request with the
@@ -262,11 +263,11 @@ func NewContext(cfg *Config) (*Context, error) {
 	if cfg.IDContext != nil {
 		c.idContext = bytes.Clone(cfg.IDContext)
 	}
-	if w := cfg.ReplayWindow; w != nil && w.Received&1 == 0 && *w != (ReplayWindow{}) {
-		return nil, errors.New("oscore: inconsistent replay window")
-	}
-	if cfg.ReplayWindow != nil {
-		c.window = *cfg.ReplayWindow
+	if w := cfg.ReplayWindow; w != nil && !cfg.ReplayWindowLost {
+		if w.Received&1 == 0 && *w != (ReplayWindow{}) {
+			return nil, errors.New("oscore: inconsistent replay window")
+		}
+		c.window = *w
 		// Windows saved by v0.1.0 have no bits past their size.
 		if c.window.Received != 0 {
 			c.window.Received |= ^uint64(0) << size
@@ -353,15 +354,6 @@ func encodePIV(v uint64) []byte {
 		return []byte{0}
 	}
 	return encodeUint(v)
-}
-
-// exhausted reports whether every Sender Sequence Number has been used, so
-// that the Sender Context must not be used any more (RFC 8613, Section
-// 7.2.1).
-func (c *Context) exhausted() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.ssn > maxSenderSequenceNumber
 }
 
 // SenderSequence returns the next Sender Sequence Number the context will
