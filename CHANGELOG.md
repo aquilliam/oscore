@@ -1,10 +1,17 @@
 # Changelog
 
 All notable changes to this project are listed here. Versions follow
-[semantic versioning](https://semver.org/). Until v1.0.0, minor versions may
-include breaking changes.
+[semantic versioning](https://semver.org/).
 
-## Unreleased
+## v1.0.0 (2026-11-24)
+
+The API is now stable. This release fixes replay and nonce reuse
+vulnerabilities in v0.1.0, which is retracted
+([GHSA-qmfr-p55q-rj8c](https://github.com/aquilliam/oscore/security/advisories/GHSA-qmfr-p55q-rj8c)).
+Do not restore state saved by v0.1.0. If a context of v0.1.0 was or will be
+created again from the same Master Secret, including at the upgrade, replace
+the Master Secret on both endpoints and start with new contexts. Contexts that
+get a new Master Secret each time they are created are not affected.
 
 Breaking changes:
 
@@ -31,9 +38,9 @@ Breaking changes:
 
 Fixes:
 
-- A replay window restored with a larger `ReplayWindowSize` no longer accepts
-  requests received before it was saved. A window saved by v0.1.0 must be
-  restored with the size it was saved with.
+- A replay window restored with a larger `ReplayWindowSize` rejects requests
+  received before it was saved. Windows saved by v0.1.0 still accept
+  them.
 - A notification received after its observation has ended is an `ErrReplay`.
 - The host in an Outer Proxy-Uri keeps its percent-encoding.
 

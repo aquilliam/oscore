@@ -5,8 +5,8 @@
 // TestEDHOC sets up contexts with github.com/aquilliam/edhoc and always runs.
 //
 // The aiocoap peer serves /hello, /echo and the observable /counter, or
-// requests them as a client. A test is skipped unless
-// its environment variable points at the peer:
+// requests them as a client. The tests of each implementation are skipped
+// unless its environment variable is set:
 //
 //	AIOCOAP_PYTHON    a Python with aiocoap[oscore] installed, such as
 //	                  .venv/bin/python after

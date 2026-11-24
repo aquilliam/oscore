@@ -13,13 +13,13 @@ sending them, over UDP, TCP or anything else, is left to the application.
 RFC 8613 is implemented except Appendix B.2 and the HTTP mapping of
 Section 11. Hop-Limit is an Outer option, as in
 [draft-ietf-core-oscore-capable-proxies](https://datatracker.ietf.org/doc/draft-ietf-core-oscore-capable-proxies/).
-All test vectors of RFC 8613, Appendix C are reproduced exactly, and requests, responses, Observe and Echo recovery work in both roles with
+All test vectors of RFC 8613, Appendix C are reproduced exactly, and requests,
+responses, Observe and Echo recovery work in both roles with
 [aiocoap](https://github.com/chrysn/aiocoap) 0.4.17 and
-[libcoap](https://github.com/obgm/libcoap) 4.3.5. Requests and
-responses also work in both roles with
+[libcoap](https://github.com/obgm/libcoap) 4.3.5. Requests and responses also
+work in both roles with
 [uoscore-uedhoc](https://github.com/eriptic/uoscore-uedhoc) 3.2.0, and Observe
 with its server (see [interop](interop)).
-The API may change before v1.0.
 
 Supported:
 
@@ -41,8 +41,8 @@ library and `golang.org/x/crypto`.
 ## Example
 
 See [example_test.go](example_test.go) for a server with several clients,
-Observe, and a context kept across reboots. In short, with error handling
-left out:
+Observe, and a context kept across reboots. In short, with some error
+handling left out:
 
 ```go
 // Client
@@ -61,6 +61,11 @@ resp, err := exchange.UnprotectResponse(protectedResp)
 
 // Server
 id, err := oscore.ParseRequestID(protected)
+if err != nil {
+	// if err is oscore.ErrNotProtected and the resource does not require
+	// OSCORE, handle the request; otherwise send oscore.ErrorResponse(err)
+	return
+}
 server, ok := contexts[string(id.KID)]
 if !ok {
 	// send oscore.ErrorResponse(oscore.ErrUnknownContext)
@@ -77,7 +82,8 @@ protectedResp, err := exchange.ProtectResponse(&oscore.Message{Code: oscore.Cont
 A context set up with [EDHOC](https://github.com/aquilliam/edhoc) takes its
 `Config` from `Session.OSCORE()`: `MasterSecret`, `MasterSalt`, `SenderID` and
 `RecipientID` as they are, `AEAD` as `oscore.Algorithm(p.AEADAlg)`, and
-`Hash` as `crypto.SHA256` for `HashAlg` -16.
+`Hash` as `crypto.SHA256`, `crypto.SHA384` or `crypto.SHA512` for `HashAlg`
+-16, -43 or -44.
 
 ## Go versions
 
