@@ -1,7 +1,8 @@
 # Interop tests
 
-These tests run OSCORE over CoAP over UDP on localhost between this package
-and other implementations, with Go as client and as server. Each test is
+These tests run OSCORE between this package and other implementations, with
+Go as client and as server: over CoAP over UDP on localhost, or for
+uoscore-uedhoc through a program that protects and unprotects messages. Each test is
 skipped unless its peer is set up:
 
 ```sh
@@ -17,6 +18,10 @@ cmake -S libcoap -B libcoap/build -DENABLE_DTLS=ON -DDTLS_BACKEND=openssl \
 cmake --build libcoap/build
 # on macOS, add -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3) to the first cmake
 export LIBCOAP_BIN=$PWD/libcoap/build
+
+# uoscore-uedhoc
+uoscore/build.sh
+export UOSCORE_PEER=$PWD/.build/uoscore/peer
 
 go test ./...
 ```
