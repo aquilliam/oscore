@@ -41,15 +41,14 @@ Observe, and a context kept across reboots. In short, with error handling
 left out:
 
 ```go
-ctx, err := oscore.NewContext(&oscore.Config{
+// Client
+client, err := oscore.NewContext(&oscore.Config{
 	MasterSecret: secret,
 	MasterSalt:   salt,
 	SenderID:     []byte{0x01},
 	RecipientID:  []byte{0x02},
 })
-
-// Client
-protected, exchange, err := ctx.ProtectRequest(&oscore.Message{
+protected, exchange, err := client.ProtectRequest(&oscore.Message{
 	Code:    oscore.GET,
 	Options: []oscore.Option{{Number: oscore.URIPath, Value: []byte("temperature")}},
 })
@@ -58,9 +57,11 @@ resp, err := exchange.UnprotectResponse(protectedResp)
 
 // Server
 id, err := oscore.ParseRequestID(protected) // id.KID selects the context
-req, exchange, err := ctx.UnprotectRequest(protected)
+server := contexts[string(id.KID)]
+req, exchange, err := server.UnprotectRequest(protected)
 if err != nil {
 	// send oscore.ErrorResponse(err), if not nil
+	return
 }
 protectedResp, err := exchange.ProtectResponse(&oscore.Message{Code: oscore.Content, Payload: data})
 ```

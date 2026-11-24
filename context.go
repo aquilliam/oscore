@@ -96,9 +96,10 @@ type Config struct {
 	// MasterSecret is required. MasterSalt may be empty.
 	MasterSecret []byte
 	MasterSalt   []byte
-	// IDContext is the ID Context, at most 255 bytes, or nil for none. A
-	// client sends it as 'kid context' in every request; a server with several contexts for
-	// the same Recipient ID uses it to tell them apart.
+	// IDContext is the ID Context, or nil for none. A client sends it as
+	// 'kid context' in every request; a server with several contexts for the
+	// same Recipient ID uses it to tell them apart. It can be at most 248
+	// bytes long, less the length of the longer of SenderID and RecipientID.
 	IDContext []byte
 	// SenderID and RecipientID must differ and be at most NonceSize() - 6
 	// bytes long. Either may be empty.
@@ -112,7 +113,10 @@ type Config struct {
 	Hash crypto.Hash
 
 	// SenderSequence is the first Sender Sequence Number to use: 0 for a
-	// new context, or the value last stored by Reserve after a restart.
+	// new context, or the value last stored by Reserve after a restart. A
+	// restored context must also set ReplayWindow or ReplayWindowLost, or
+	// it accepts requests it has received before and may reuse a nonce to
+	// answer them.
 	SenderSequence uint64
 	// Reserve, if not nil, makes Sender Sequence Numbers survive a restart
 	// (RFC 8613, Appendix B.1.1). Before the context uses a number n for the
@@ -121,7 +125,8 @@ type Config struct {
 	// returns; after a restart, pass the stored value as SenderSequence.
 	// If Reserve fails, so does the operation that needed the number.
 	// Reserve is called with the context locked and must not call its
-	// methods.
+	// methods. The last value it is called with is 1<<40, and NewContext
+	// returns ErrSequenceExhausted for it.
 	Reserve func(next uint64) error
 	// ReserveStep is how many Sender Sequence Numbers each call to Reserve
 	// covers. The default is 1, which stores the number before every
@@ -138,7 +143,9 @@ type Config struct {
 	// makes the server check the freshness of the first request with the
 	// Echo option before accepting requests (RFC 8613, Appendix B.1.2).
 	// Until a client answers, every request, replayed or not, gets a
-	// challenge with a new Sender Sequence Number.
+	// challenge with a new Sender Sequence Number, so Reserve is required.
+	// An accepted request was made after NewContext was called, but is not
+	// otherwise known to be recent.
 	ReplayWindowLost bool
 }
 
@@ -199,11 +206,14 @@ func NewContext(cfg *Config) (*Context, error) {
 	if bytes.Equal(cfg.SenderID, cfg.RecipientID) {
 		return nil, errors.New("oscore: Sender ID and Recipient ID are equal")
 	}
-	if len(cfg.IDContext) > 255 {
-		return nil, errors.New("oscore: ID Context longer than 255 bytes")
+	if n := 1 + maxPIVSize + 1 + len(cfg.IDContext) + max(len(cfg.SenderID), len(cfg.RecipientID)); n > maxOSCOREOptionLength {
+		return nil, errors.New("oscore: ID Context too long for the OSCORE option")
 	}
 	if cfg.SenderSequence > maxSenderSequenceNumber {
-		return nil, errors.New("oscore: Sender Sequence Number out of range")
+		return nil, ErrSequenceExhausted
+	}
+	if cfg.ReplayWindowLost && cfg.Reserve == nil {
+		return nil, errors.New("oscore: ReplayWindowLost without Reserve")
 	}
 	size := cfg.ReplayWindowSize
 	if size == 0 {
@@ -257,7 +267,6 @@ func NewContext(cfg *Config) (*Context, error) {
 	}
 	if cfg.ReplayWindow != nil {
 		c.window = *cfg.ReplayWindow
-		c.window.Received &= windowMask(size)
 	}
 	return c, nil
 }
@@ -268,13 +277,6 @@ const (
 	maxPIVSize              = 5
 	echoSize                = 8
 )
-
-func windowMask(size int) uint64 {
-	if size == 64 {
-		return ^uint64(0)
-	}
-	return 1<<size - 1
-}
 
 // kdfInfo returns the info structure of RFC 8613, Section 3.2.1.
 func kdfInfo(id, idContext []byte, alg Algorithm, typ string, length int) []byte {
@@ -349,6 +351,15 @@ func encodePIV(v uint64) []byte {
 	return encodeUint(v)
 }
 
+// exhausted reports whether every Sender Sequence Number has been used, so
+// that the Sender Context must not be used any more (RFC 8613, Section
+// 7.2.1).
+func (c *Context) exhausted() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ssn > maxSenderSequenceNumber
+}
+
 // SenderSequence returns the next Sender Sequence Number the context will
 // use.
 func (c *Context) SenderSequence() uint64 {
@@ -359,11 +370,16 @@ func (c *Context) SenderSequence() uint64 {
 
 // ReplayWindow returns the state of the replay window, to be stored with
 // the context and passed back in Config.ReplayWindow. It must not be used
-// to restore a context that has received requests since it was saved.
-func (c *Context) ReplayWindow() ReplayWindow {
+// to restore a context that has received requests since it was saved. ok is
+// false if the window was lost and no client has answered the challenge
+// yet: the context must then be restored with Config.ReplayWindowLost.
+func (c *Context) ReplayWindow() (w ReplayWindow, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.window
+	if c.lost {
+		return ReplayWindow{}, false
+	}
+	return c.window, true
 }
 
 // AEAD returns the AEAD algorithm of the context.
@@ -409,7 +425,6 @@ func (c *Context) accept(seq uint64) {
 	default:
 		w.Received |= 1 << (w.Highest - seq)
 	}
-	w.Received &= windowMask(c.windowSize)
 }
 
 // echoValue returns the Echo value the server expects after losing its

@@ -8,6 +8,8 @@ const (
 	flagKID     = 0x08
 	flagContext = 0x10
 	flagsUnused = 0xe0
+
+	maxOSCOREOptionLength = 255 // RFC 8613, Section 2
 )
 
 // optionValue is the decoded value of an OSCORE option.
@@ -44,6 +46,9 @@ func parseOptionValue(b []byte) (*optionValue, error) {
 	v := &optionValue{}
 	if len(b) == 0 {
 		return v, nil
+	}
+	if len(b) > maxOSCOREOptionLength {
+		return nil, ErrMalformed
 	}
 	flags := b[0]
 	b = b[1:]

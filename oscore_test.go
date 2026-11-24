@@ -158,10 +158,35 @@ func TestReplayWindow(t *testing.T) {
 	accept(6, nil)
 	accept(6, ErrReplay)
 
-	saved := server.ReplayWindow()
+	saved, ok := server.ReplayWindow()
+	if !ok {
+		t.Fatal("replay window not known")
+	}
 	_, restored := newPair(t, func(c, s *Config) { s.ReplayWindowSize = 4; s.ReplayWindow = &saved })
 	if _, _, err := restored.UnprotectRequest(reqs[6]); !errors.Is(err, ErrReplay) {
 		t.Errorf("restored window accepted a replay: %v", err)
+	}
+}
+
+func TestReplayWindowGrows(t *testing.T) {
+	client, server := newPair(t, nil)
+	var reqs []*Message
+	for range 50 {
+		out, _, err := client.ProtectRequest(get("a"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := server.UnprotectRequest(out); err != nil {
+			t.Fatal(err)
+		}
+		reqs = append(reqs, out)
+	}
+	saved, _ := server.ReplayWindow()
+	_, restored := newPair(t, func(c, s *Config) { s.ReplayWindowSize = 64; s.ReplayWindow = &saved })
+	for i, r := range reqs {
+		if _, _, err := restored.UnprotectRequest(r); !errors.Is(err, ErrReplay) {
+			t.Errorf("request %d: err = %v, want ErrReplay", i, err)
+		}
 	}
 }
 
@@ -210,7 +235,7 @@ func TestUnknownContext(t *testing.T) {
 }
 
 func TestLongIDContext(t *testing.T) {
-	for _, n := range []int{23, 24, 255} {
+	for _, n := range []int{23, 24, 247} {
 		idContext := bytes.Repeat([]byte{7}, n)
 		client, server := newPair(t, func(c, s *Config) { c.IDContext, s.IDContext = idContext, idContext })
 		exchange(t, client, server, get("a"))
@@ -388,6 +413,18 @@ func TestProxyURI(t *testing.T) {
 			t.Errorf("Proxy-Uri %q: err = %v", bad, err)
 		}
 	}
+	for uri, want := range map[string]string{
+		"coap://ex%C3%A4mple.com/a":     "coap://ex%C3%A4mple.com",
+		"coap://[fe80::1%25en0]:5683/a": "coap://[fe80::1%25en0]:5683",
+	} {
+		outer, _, err := splitProxyURI(uri)
+		if err != nil || outer != want {
+			t.Errorf("%s: outer %q, %v", uri, outer, err)
+		}
+		if _, rest, err := splitProxyURI(outer); err != nil || len(rest) != 0 {
+			t.Errorf("%s: outer %q: %d options, %v", uri, outer, len(rest), err)
+		}
+	}
 	for uri, want := range map[string]int{"coap://h": 0, "coap://h/": 0, "coap://h/a/": 2, "coap://h?": 0} {
 		_, opts, err := splitProxyURI(uri)
 		if err != nil || len(opts) != want {
@@ -515,6 +552,7 @@ func TestObserve(t *testing.T) {
 
 	// A notification for a request without Observe is rejected.
 	_, cx2, sx2 := exchange(t, client, server, get("a"))
+	sx2.observe = true
 	n, err := sx2.ProtectResponse(&Message{Code: Content, Options: []Option{{Observe, []byte{1}}}})
 	if err != nil {
 		t.Fatal(err)
@@ -525,7 +563,11 @@ func TestObserve(t *testing.T) {
 }
 
 func TestEchoRecovery(t *testing.T) {
-	client, server := newPair(t, func(c, s *Config) { s.ReplayWindowLost = true; s.SenderSequence = 50 })
+	client, server := newPair(t, func(c, s *Config) {
+		s.ReplayWindowLost = true
+		s.SenderSequence = 50
+		s.Reserve = func(uint64) error { return nil }
+	})
 	first, cx, err := client.ProtectRequest(get("a"))
 	if err != nil {
 		t.Fatal(err)
@@ -548,6 +590,9 @@ func TestEchoRecovery(t *testing.T) {
 	}
 
 	// A request without the Echo value is challenged again.
+	if w, ok := server.ReplayWindow(); ok {
+		t.Errorf("ReplayWindow = %+v before the challenge is answered", w)
+	}
 	again, _, err := client.ProtectRequest(get("a"))
 	if err != nil {
 		t.Fatal(err)
@@ -626,17 +671,19 @@ func TestSequenceExhausted(t *testing.T) {
 
 func TestNewContextErrors(t *testing.T) {
 	for name, edit := range map[string]func(*Config){
-		"no secret":       func(c *Config) { c.MasterSecret = nil },
-		"same IDs":        func(c *Config) { c.RecipientID = c.SenderID },
-		"long Sender ID":  func(c *Config) { c.SenderID = make([]byte, 8) },
-		"long for CCM-64": func(c *Config) { c.AEAD = AESCCM64_64_128; c.SenderID = []byte{1, 2} },
-		"long for GCM":    func(c *Config) { c.AEAD = A128GCM; c.RecipientID = make([]byte, 7) },
-		"algorithm":       func(c *Config) { c.AEAD = 99 },
-		"hash":            func(c *Config) { c.Hash = crypto.MD5 },
-		"window size":     func(c *Config) { c.ReplayWindowSize = 65 },
-		"negative window": func(c *Config) { c.ReplayWindowSize = -1 },
-		"sequence":        func(c *Config) { c.SenderSequence = maxSenderSequenceNumber + 1 },
-		"long ID Context": func(c *Config) { c.IDContext = make([]byte, 256) },
+		"no secret":        func(c *Config) { c.MasterSecret = nil },
+		"same IDs":         func(c *Config) { c.RecipientID = c.SenderID },
+		"long Sender ID":   func(c *Config) { c.SenderID = make([]byte, 8) },
+		"long for CCM-64":  func(c *Config) { c.AEAD = AESCCM64_64_128; c.SenderID = []byte{1, 2} },
+		"long for GCM":     func(c *Config) { c.AEAD = A128GCM; c.RecipientID = make([]byte, 7) },
+		"algorithm":        func(c *Config) { c.AEAD = 99 },
+		"hash":             func(c *Config) { c.Hash = crypto.MD5 },
+		"window size":      func(c *Config) { c.ReplayWindowSize = 65 },
+		"negative window":  func(c *Config) { c.ReplayWindowSize = -1 },
+		"sequence":         func(c *Config) { c.SenderSequence = maxSenderSequenceNumber + 1 },
+		"long ID Context":  func(c *Config) { c.SenderID, c.IDContext = []byte{1, 2}, make([]byte, 247) },
+		"long peer ID":     func(c *Config) { c.RecipientID, c.IDContext = []byte{1, 2}, make([]byte, 247) },
+		"lost, no Reserve": func(c *Config) { c.ReplayWindowLost = true },
 	} {
 		cfg := &Config{MasterSecret: []byte{1}, SenderID: []byte{1}, RecipientID: []byte{2}}
 		edit(cfg)
@@ -717,7 +764,7 @@ func TestConcurrent(t *testing.T) {
 		}
 	}
 	accepted.Wait()
-	if w := server.ReplayWindow(); w.Highest != n-1 || w.Received != ^uint64(0) {
+	if w, ok := server.ReplayWindow(); !ok || w.Highest != n-1 || w.Received != ^uint64(0) {
 		t.Errorf("window = %+v", w)
 	}
 }
@@ -827,7 +874,11 @@ func TestReserveSaturates(t *testing.T) {
 		}
 	}
 	if !slices.Equal(stored, []uint64{maxSenderSequenceNumber + 1}) {
-		t.Errorf("reserved %v", stored)
+		t.Fatalf("reserved %v", stored)
+	}
+	_, err := NewContext(&Config{MasterSecret: []byte{1}, SenderID: []byte{1}, SenderSequence: stored[0]})
+	if !errors.Is(err, ErrSequenceExhausted) {
+		t.Errorf("restart: err = %v", err)
 	}
 }
 
@@ -871,6 +922,88 @@ func TestInconsistentReplayWindow(t *testing.T) {
 		cfg := &Config{MasterSecret: []byte{1}, SenderID: []byte{1}, RecipientID: []byte{2}, ReplayWindow: &w}
 		if _, err := NewContext(cfg); err == nil {
 			t.Errorf("window %+v accepted", w)
+		}
+	}
+}
+
+func TestExhaustedResponse(t *testing.T) {
+	client, server := newPair(t, func(c, s *Config) { s.SenderSequence = maxSenderSequenceNumber })
+	_, _, sx := exchange(t, client, server, get("a"))
+	if _, _, err := server.ProtectRequest(get("a")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sx.ProtectResponse(&Message{Code: Content}); !errors.Is(err, ErrSequenceExhausted) {
+		t.Errorf("err = %v, want ErrSequenceExhausted", err)
+	}
+}
+
+func TestObserveNotRegistered(t *testing.T) {
+	client, server := newPair(t, nil)
+	_, cx, sx := exchange(t, client, server, get("a"))
+	if _, err := sx.ProtectResponse(&Message{Code: Content, Options: []Option{{Number: Observe, Value: []byte{1}}}}); !errors.Is(err, errObserveNotRegistered) {
+		t.Fatalf("err = %v", err)
+	}
+	out, err := sx.ProtectResponse(&Message{Code: Content})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := out.option(OSCORE); len(v) != 0 {
+		t.Errorf("OSCORE option = %x, want empty", v)
+	}
+	if _, err := cx.UnprotectResponse(out); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNotificationAfterObservation(t *testing.T) {
+	client, server := newPair(t, nil)
+	_, cx, sx := exchange(t, client, server, get("a", Option{Number: Observe}))
+	notify := func(opts ...Option) *Message {
+		out, err := sx.ProtectResponse(&Message{Code: Content, Options: opts})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	late, last := notify(Option{Number: Observe}), notify()
+	if _, err := cx.UnprotectResponse(last); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cx.UnprotectResponse(late); !errors.Is(err, ErrReplay) {
+		t.Errorf("err = %v, want ErrReplay", err)
+	}
+}
+
+func TestInnerClassUOption(t *testing.T) {
+	client, server := newPair(t, nil)
+	piv, err := client.nextPIV()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, err := appendOptions([]byte{byte(GET)}, []Option{{URIHost, []byte("inner")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := &optionValue{piv: piv, kid: client.senderID, hasKID: true}
+	in, _, err := server.UnprotectRequest(&Message{
+		Code:    POST,
+		Options: []Option{{URIHost, []byte("outer")}, {OSCORE, opt.encode()}},
+		Payload: client.sender.Seal(nil, client.nonce(client.senderID, piv), plaintext, client.aad(client.senderID, piv)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := optionValues(in, URIHost); !slices.Equal(got, []string{"inner"}) {
+		t.Errorf("Uri-Host = %q", got)
+	}
+}
+
+func TestLongOptionValue(t *testing.T) {
+	for n, want := range map[int]error{maxOSCOREOptionLength: nil, maxOSCOREOptionLength + 1: ErrMalformed} {
+		v := make([]byte, n)
+		v[0] = flagKID | 1
+		if _, err := parseOptionValue(v); !errors.Is(err, want) {
+			t.Errorf("%d bytes: err = %v, want %v", n, err, want)
 		}
 	}
 }

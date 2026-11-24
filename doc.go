@@ -18,19 +18,22 @@
 // provisioned out of band.
 //
 // A Sender Sequence Number must never be used twice with the same keys, and
-// a server must not accept a request twice. To keep a context across
-// restarts, set Config.Reserve to store Sender Sequence Numbers ahead of use
-// (RFC 8613, Appendix B.1.1), and either save the replay window with
-// Context.ReplayWindow or set Config.ReplayWindowLost so that the server
-// checks the freshness of the first request with Echo (Appendix B.1.2).
+// a server must not accept a request twice. Two contexts created from the
+// same parameters use the same numbers, so create only one. To keep a
+// context across restarts, set Config.Reserve to store Sender Sequence
+// Numbers ahead of use (RFC 8613, Appendix B.1.1), and either save the replay
+// window with Context.ReplayWindow or set Config.ReplayWindowLost so that the
+// server checks the freshness of the first request with Echo (Appendix
+// B.1.2).
 //
 // # Clients
 //
 // A client protects a request with Context.ProtectRequest, sends the result
 // with a new Token, and verifies each response with the same Token with
-// Exchange.UnprotectResponse. If the server answers 4.01 (Unauthorized)
-// with an Echo option, the client sends the request again with that Echo
-// option added (RFC 9175).
+// Exchange.UnprotectResponse. If a verified response is 4.01 (Unauthorized)
+// with an Echo option, the client protects the request again with that Echo
+// option added (RFC 9175). An error response that is not protected may be
+// forged, and the client must not change its security context because of it.
 //
 // # Servers
 //

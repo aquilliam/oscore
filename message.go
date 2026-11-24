@@ -84,6 +84,8 @@ const (
 
 // classU reports whether the option is only an Outer option (Class U, RFC
 // 8613, Section 4.1). Every other option is written to the plaintext.
+// Hop-Limit is Class U so that proxies can decrement it, as in libcoap and
+// draft-ietf-core-oscore-capable-proxies; RFC 8768 does not say.
 func classU(n OptionNumber) bool {
 	switch n {
 	case URIHost, URIPort, OSCORE, HopLimit, EDHOC, ProxyURI, ProxyScheme:
