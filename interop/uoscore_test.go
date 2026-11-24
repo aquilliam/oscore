@@ -2,20 +2,29 @@ package interop
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aquilliam/oscore"
 )
 
 // uoscore-uedhoc implements OSCORE only with AES-CCM-16-64-128.
-var uoscoreSetups = libcoapSetups
+var uoscoreSetups = []setup{
+	{alg: oscore.AESCCM16_64_128},
+	{alg: oscore.AESCCM16_64_128, idContext: unhex("37cbf3210017a2d3")},
+}
+
+// uoscoreReplay is uoscore-uedhoc's oscore_replay_window_protection_error.
+const uoscoreReplay = "error 215"
 
 // A uoscorePeer is one endpoint run by uoscore-uedhoc. It protects and
 // unprotects CoAP over UDP messages.
@@ -34,7 +43,8 @@ func startUoscore(t *testing.T, s setup, sender, recipient []byte) *uoscorePeer 
 	if s.idContext != nil {
 		args = append(args, fmt.Sprintf("%x", s.idContext))
 	}
-	cmd := exec.Command(bin, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Stderr = os.Stderr
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -47,7 +57,13 @@ func startUoscore(t *testing.T, s setup, sender, recipient []byte) *uoscorePeer 
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { in.Close(); cmd.Wait() })
+	t.Cleanup(func() {
+		defer cancel()
+		in.Close()
+		if err := cmd.Wait(); err != nil {
+			t.Errorf("uoscore peer: %v", err)
+		}
+	})
 	return &uoscorePeer{in: in, out: bufio.NewReader(out)}
 }
 
@@ -95,7 +111,7 @@ func equal(t *testing.T, got, want *oscore.Message) {
 	}
 	for i, o := range got.Options {
 		w := want.Options[i]
-		if o.Number != w.Number || len(o.Value)+len(w.Value) > 0 && !reflect.DeepEqual(o.Value, w.Value) {
+		if o.Number != w.Number || !bytes.Equal(o.Value, w.Value) {
 			t.Fatalf("option %d: got %v, want %v", i, o, w)
 		}
 	}
@@ -134,8 +150,8 @@ func TestGoClientUoscoreServer(t *testing.T) {
 						t.Fatal(err)
 					}
 					equal(t, peer.must(t, "unprotect", token, out), req)
-					if _, err := peer.do(t, "unprotect", token, out); err == nil {
-						t.Fatal("uoscore accepted a replay")
+					if _, err := peer.do(t, "unprotect", token, out); err == nil || !strings.HasSuffix(err.Error(), uoscoreReplay) {
+						t.Fatalf("replay: err = %v, want %s", err, uoscoreReplay)
 					}
 					got, err := x.UnprotectResponse(peer.must(t, "protect", token, uoscoreResponse))
 					if err != nil {
@@ -165,8 +181,8 @@ func TestUoscoreClientGoServer(t *testing.T) {
 						t.Fatal(err)
 					}
 					equal(t, got, req)
-					if _, _, err := ctx.UnprotectRequest(in); err == nil {
-						t.Fatal("replay accepted")
+					if _, _, err := ctx.UnprotectRequest(in); !errors.Is(err, oscore.ErrReplay) {
+						t.Fatalf("replay: err = %v", err)
 					}
 					out, err := x.ProtectResponse(uoscoreResponse)
 					if err != nil {
