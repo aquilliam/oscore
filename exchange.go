@@ -170,7 +170,8 @@ func (c *Context) UnprotectRequest(m *Message) (*Message, *Exchange, error) {
 // The first response reuses the request's nonce; later notifications to an
 // Observe registration get a Partial IV of their own. A response with an
 // Observe option is protected as a notification, and one without ends the
-// observation.
+// observation. It fails with ErrSequenceExhausted once the context has used
+// all its Sender Sequence Numbers, also for a request accepted before.
 func (x *Exchange) ProtectResponse(m *Message) (*Message, error) {
 	if !x.server {
 		return nil, errors.New("oscore: ProtectResponse called on a client exchange")

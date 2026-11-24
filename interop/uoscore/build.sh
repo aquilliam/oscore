@@ -21,12 +21,15 @@ git -C "$src" submodule update -q --init --depth 1 \
 
 ext="$src/externals"
 # crypto_p256.c is only used with mbedTLS.
-common=$(ls "$src"/src/common/*.c | grep -v /crypto_p256.c)
+set --
+for f in "$src"/src/common/*.c; do
+	case $f in */crypto_p256.c) ;; *) set -- "$@" "$f" ;; esac
+done
 ${CC:-cc} -std=c11 -O1 -w \
 	-DZCBOR -DZCBOR_CANONICAL -DTINYCRYPT -DCOMPACT25519 \
 	-I"$src/inc" -I"$ext/tinycrypt/lib/include" -I"$ext/zcbor/include" \
 	-I"$ext/compact25519/src" -I"$ext/compact25519/src/c25519" \
-	"$src"/src/oscore/*.c $common "$src"/src/cbor/*.c \
+	"$src"/src/oscore/*.c "$@" "$src"/src/cbor/*.c \
 	"$ext"/tinycrypt/lib/source/*.c \
 	"$ext"/compact25519/src/*.c "$ext"/compact25519/src/c25519/*.c \
 	"$ext"/zcbor/src/zcbor_common.c "$ext"/zcbor/src/zcbor_decode.c "$ext"/zcbor/src/zcbor_encode.c \

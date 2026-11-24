@@ -1,10 +1,11 @@
 // Package interop runs OSCORE exchanges between this package and other
-// implementations over CoAP over UDP on localhost.
+// implementations: over CoAP over UDP on localhost, or for uoscore-uedhoc
+// through a program that protects and unprotects messages.
 //
 // TestEDHOC sets up contexts with github.com/aquilliam/edhoc and always runs.
 //
-// Each implementation has a peer program that serves /hello, /echo and the
-// observable /counter, or requests them as a client. A test is skipped unless
+// The aiocoap peer serves /hello, /echo and the observable /counter, or
+// requests them as a client. A test is skipped unless
 // its environment variable points at the peer:
 //
 //	AIOCOAP_PYTHON    a Python with aiocoap[oscore] installed, such as

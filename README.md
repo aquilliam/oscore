@@ -15,9 +15,10 @@ Section 11. Hop-Limit is an Outer option, as in
 [draft-ietf-core-oscore-capable-proxies](https://datatracker.ietf.org/doc/draft-ietf-core-oscore-capable-proxies/).
 All test vectors of RFC 8613, Appendix C are reproduced exactly, and requests, responses, Observe and Echo recovery work in both roles with
 [aiocoap](https://github.com/chrysn/aiocoap) 0.4.17 and
-[libcoap](https://github.com/obgm/libcoap) 4.3.5, and requests and responses
-with [uoscore-uedhoc](https://github.com/eriptic/uoscore-uedhoc) 3.2.0 (see
-[interop](interop)).
+[libcoap](https://github.com/obgm/libcoap) 4.3.5. Requests and
+responses also work in both roles with
+[uoscore-uedhoc](https://github.com/eriptic/uoscore-uedhoc) 3.2.0, and Observe
+with its server (see [interop](interop)).
 The API may change before v1.0.
 
 Supported:
