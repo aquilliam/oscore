@@ -1,0 +1,44 @@
+name: Weekly
+
+on:
+  schedule:
+    - cron: "43 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: stable
+      - name: Fuzz
+        run: |
+          failed=0
+          pkgs=$(go list ./...)
+          for pkg in $pkgs; do
+            list=$(go test -list '^Fuzz' "$pkg") || { failed=1; continue; }
+            for target in $(grep '^Fuzz' <<< "$list" || true); do
+              echo "$pkg $target"
+              go test -run '^$' -fuzz "^$target\$" -fuzztime 5m "$pkg" || failed=1
+            done
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() || cancelled()
+        with:
+          name: fuzz-failures
+          path: '**/testdata/fuzz/'
+          if-no-files-found: ignore
