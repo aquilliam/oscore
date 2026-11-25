@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/aquilliam/oscore.svg)](https://pkg.go.dev/github.com/aquilliam/oscore)
 [![codecov](https://codecov.io/gh/aquilliam/oscore/graph/badge.svg)](https://codecov.io/gh/aquilliam/oscore)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/17090/badge)](https://www.bestpractices.dev/projects/17090)
 
 A Go implementation of OSCORE ([RFC 8613](https://www.rfc-editor.org/rfc/rfc8613)),
 Object Security for Constrained RESTful Environments: end-to-end protection
