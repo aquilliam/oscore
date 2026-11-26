@@ -13,9 +13,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/pion/dtls/v3/pkg/crypto/ccm"
 	"golang.org/x/crypto/chacha20poly1305"
-
-	"github.com/aquilliam/oscore/internal/ccm"
 )
 
 // An Algorithm is a COSE AEAD algorithm identifier (RFC 9053).
@@ -85,7 +84,7 @@ func (a Algorithm) newAEAD(key []byte) (cipher.AEAD, error) {
 		return nil, err
 	}
 	if p.ccm {
-		return ccm.New(b, p.tagSize, p.nonceSize)
+		return ccm.NewCCM(b, p.tagSize, p.nonceSize)
 	}
 	return cipher.NewGCM(b)
 }

@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/pion/dtls/v3 v3.1.16 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 )

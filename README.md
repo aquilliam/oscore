@@ -37,7 +37,8 @@ Supported:
 - Signaling messages over reliable transports (Section 4.3)
 
 The code is pure Go with no cgo or `unsafe`, and depends only on the standard
-library and `golang.org/x/crypto`.
+library, `golang.org/x/crypto` and the AES-CCM package of
+`github.com/pion/dtls/v3`.
 
 ## Example
 

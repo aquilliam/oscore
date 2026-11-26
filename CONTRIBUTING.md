@@ -7,7 +7,8 @@ open an issue first so the approach can be agreed before you write code.
   sending a change.
 - Changes to message processing need a test, ideally one taken from RFC 8613,
   Appendix C, or from an interop run.
-- Keep dependencies to the standard library and `golang.org/x/crypto`.
+- Keep dependencies to the standard library, `golang.org/x/crypto` and
+  `github.com/pion/dtls/v3/pkg/crypto/ccm`.
 
 Sign off each commit (`git commit -s`) to certify the
 [Developer Certificate of Origin](https://developercertificate.org/).
