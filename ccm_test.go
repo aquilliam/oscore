@@ -1,31 +1,23 @@
-package ccm
+package oscore
 
 import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/pion/dtls/v3/pkg/crypto/ccm"
 )
 
-func unhex(t testing.TB, s string) []byte {
-	t.Helper()
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-func newAEAD(t testing.TB, key []byte, tagSize, nonceSize int) cipher.AEAD {
+func newCCM(t testing.TB, key []byte, tagSize, nonceSize int) cipher.AEAD {
 	t.Helper()
 	b, err := aes.NewCipher(key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := New(b, tagSize, nonceSize)
+	a, err := ccm.NewCCM(b, tagSize, nonceSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +35,9 @@ func readJSON(t *testing.T, name string, v any) {
 	}
 }
 
-// The packet vectors of RFC 3610, Section 8. They use a 13-byte nonce, as
-// EDHOC does, with 8- and 10-byte tags.
-func TestRFC3610(t *testing.T) {
+// The packet vectors of RFC 3610, Section 8. They use a 13-byte nonce with 8-
+// and 10-byte tags.
+func TestCCMRFC3610(t *testing.T) {
 	var vectors []struct {
 		Vector     int
 		Key        string
@@ -60,7 +52,7 @@ func TestRFC3610(t *testing.T) {
 		t.Fatalf("got %d vectors, want 24", len(vectors))
 	}
 	for _, v := range vectors {
-		a := newAEAD(t, unhex(t, v.Key), v.TagSize, 13)
+		a := newCCM(t, unhex(t, v.Key), v.TagSize, 13)
 		nonce, aad, pt, ct := unhex(t, v.Nonce), unhex(t, v.AAD), unhex(t, v.Plaintext), unhex(t, v.Ciphertext)
 		if got := a.Seal(nil, nonce, pt, aad); !bytes.Equal(got, ct) {
 			t.Errorf("vector %d: Seal = %x, want %x", v.Vector, got, ct)
@@ -71,7 +63,7 @@ func TestRFC3610(t *testing.T) {
 	}
 }
 
-func TestWycheproof(t *testing.T) {
+func TestWycheproofCCM(t *testing.T) {
 	var file struct {
 		NumberOfTests int
 		TestGroups    []struct {
@@ -93,10 +85,10 @@ func TestWycheproof(t *testing.T) {
 			if err != nil {
 				t.Fatalf("test %d: %v", tc.TcID, err)
 			}
-			a, err := New(b, g.TagSize/8, g.IvSize/8)
+			a, err := ccm.NewCCM(b, g.TagSize/8, g.IvSize/8)
 			if err != nil {
 				if tc.Result == "valid" {
-					t.Errorf("test %d (%s): New: %v", tc.TcID, tc.Comment, err)
+					t.Errorf("test %d (%s): NewCCM: %v", tc.TcID, tc.Comment, err)
 				}
 				continue
 			}
@@ -123,22 +115,22 @@ func TestWycheproof(t *testing.T) {
 	}
 }
 
-func TestNewRejectsBadSizes(t *testing.T) {
+func TestCCMRejectsBadSizes(t *testing.T) {
 	b, _ := aes.NewCipher(make([]byte, 16))
 	for _, tagSize := range []int{0, 2, 3, 5, 17, 18} {
-		if _, err := New(b, tagSize, 13); err == nil {
-			t.Errorf("New accepted tag size %d", tagSize)
+		if _, err := ccm.NewCCM(b, tagSize, 13); err == nil {
+			t.Errorf("NewCCM accepted tag size %d", tagSize)
 		}
 	}
 	for _, nonceSize := range []int{0, 6, 14, 16} {
-		if _, err := New(b, 8, nonceSize); err == nil {
-			t.Errorf("New accepted nonce size %d", nonceSize)
+		if _, err := ccm.NewCCM(b, 8, nonceSize); err == nil {
+			t.Errorf("NewCCM accepted nonce size %d", nonceSize)
 		}
 	}
 }
 
-func TestInPlace(t *testing.T) {
-	a := newAEAD(t, make([]byte, 16), 8, 13)
+func TestCCMInPlace(t *testing.T) {
+	a := newCCM(t, make([]byte, 16), 8, 13)
 	nonce, aad := make([]byte, 13), []byte("aad")
 	msg := []byte("in-place plaintext")
 	buf := make([]byte, len(msg), len(msg)+a.Overhead())
@@ -153,8 +145,8 @@ func TestInPlace(t *testing.T) {
 	}
 }
 
-func TestOpenRejectsTampering(t *testing.T) {
-	a := newAEAD(t, make([]byte, 16), 8, 13)
+func TestCCMOpenRejectsTampering(t *testing.T) {
+	a := newCCM(t, make([]byte, 16), 8, 13)
 	nonce, aad := make([]byte, 13), []byte{1, 2, 3}
 	sealed := a.Seal(nil, nonce, []byte("message_3 plaintext"), aad)
 	for i := range sealed {
@@ -177,8 +169,8 @@ func TestOpenRejectsTampering(t *testing.T) {
 	}
 }
 
-func TestOpenClearsOutputOnFailure(t *testing.T) {
-	a := newAEAD(t, make([]byte, 16), 8, 13)
+func TestCCMOpenClearsOutputOnFailure(t *testing.T) {
+	a := newCCM(t, make([]byte, 16), 8, 13)
 	nonce := make([]byte, 13)
 	sealed := a.Seal(nil, nonce, []byte("secret"), nil)
 	sealed[0] ^= 1
@@ -191,21 +183,31 @@ func TestOpenClearsOutputOnFailure(t *testing.T) {
 	}
 }
 
-func TestLongAdditionalData(t *testing.T) {
+func TestCCMLongAdditionalData(t *testing.T) {
 	// Lengths of 0xff00 and above use the six-byte length encoding.
-	a := newAEAD(t, make([]byte, 16), 16, 13)
+	a := newCCM(t, make([]byte, 16), 16, 13)
 	nonce := make([]byte, 13)
-	for _, n := range []int{0xfeff, 0xff00, 0x10000} {
-		aad := bytes.Repeat([]byte{0xa5}, n)
+	for _, v := range []struct {
+		n      int
+		sealed string
+	}{
+		{0xfeff, "adc78e97e69e0ee0a7796a48a044feba50"},
+		{0xff00, "ad5e2b71e62f7b5c7347a86cf49422af62"},
+		{0x10000, "ad26e4d860f3161fa77f750dea4f1cf3d3"},
+	} {
+		aad := bytes.Repeat([]byte{0xa5}, v.n)
 		sealed := a.Seal(nil, nonce, []byte("x"), aad)
+		if want := unhex(t, v.sealed); !bytes.Equal(sealed, want) {
+			t.Errorf("additional data of %d bytes: Seal = %x, want %x", v.n, sealed, want)
+		}
 		if _, err := a.Open(nil, nonce, sealed, aad); err != nil {
-			t.Errorf("additional data of %d bytes: %v", n, err)
+			t.Errorf("additional data of %d bytes: %v", v.n, err)
 		}
 	}
 }
 
-func TestSealPanicsOnLongMessage(t *testing.T) {
-	a := newAEAD(t, make([]byte, 16), 8, 13)
+func TestCCMSealPanicsOnLongMessage(t *testing.T) {
+	a := newCCM(t, make([]byte, 16), 8, 13)
 	defer func() {
 		if recover() == nil {
 			t.Fatal("Seal accepted a 65536-byte message with a 2-byte length field")
@@ -214,11 +216,11 @@ func TestSealPanicsOnLongMessage(t *testing.T) {
 	a.Seal(nil, make([]byte, 13), make([]byte, 1<<16), nil)
 }
 
-func FuzzRoundTrip(f *testing.F) {
+func FuzzCCMRoundTrip(f *testing.F) {
 	f.Add([]byte("hello"), []byte("aad"), uint8(8), uint8(13))
 	f.Fuzz(func(t *testing.T, msg, aad []byte, tagSize, nonceSize uint8) {
 		b, _ := aes.NewCipher(make([]byte, 16))
-		a, err := New(b, int(tagSize), int(nonceSize))
+		a, err := ccm.NewCCM(b, int(tagSize), int(nonceSize))
 		if err != nil {
 			return
 		}

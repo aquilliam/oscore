@@ -3,6 +3,11 @@
 All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/).
 
+## v1.0.1 (2026-11-26)
+
+- AES-CCM comes from `github.com/pion/dtls/v3/pkg/crypto/ccm` instead of an
+  implementation in this module.
+
 ## v1.0.0 (2026-11-24)
 
 The API is now stable. This release fixes replay and nonce reuse
