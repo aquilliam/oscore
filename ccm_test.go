@@ -187,11 +187,21 @@ func TestCCMLongAdditionalData(t *testing.T) {
 	// Lengths of 0xff00 and above use the six-byte length encoding.
 	a := newCCM(t, make([]byte, 16), 16, 13)
 	nonce := make([]byte, 13)
-	for _, n := range []int{0xfeff, 0xff00, 0x10000} {
-		aad := bytes.Repeat([]byte{0xa5}, n)
+	for _, v := range []struct {
+		n      int
+		sealed string
+	}{
+		{0xfeff, "adc78e97e69e0ee0a7796a48a044feba50"},
+		{0xff00, "ad5e2b71e62f7b5c7347a86cf49422af62"},
+		{0x10000, "ad26e4d860f3161fa77f750dea4f1cf3d3"},
+	} {
+		aad := bytes.Repeat([]byte{0xa5}, v.n)
 		sealed := a.Seal(nil, nonce, []byte("x"), aad)
+		if want := unhex(t, v.sealed); !bytes.Equal(sealed, want) {
+			t.Errorf("additional data of %d bytes: Seal = %x, want %x", v.n, sealed, want)
+		}
 		if _, err := a.Open(nil, nonce, sealed, aad); err != nil {
-			t.Errorf("additional data of %d bytes: %v", n, err)
+			t.Errorf("additional data of %d bytes: %v", v.n, err)
 		}
 	}
 }
