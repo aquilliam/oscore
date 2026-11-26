@@ -35,8 +35,8 @@ func readJSON(t *testing.T, name string, v any) {
 	}
 }
 
-// The packet vectors of RFC 3610, Section 8. They use a 13-byte nonce, as
-// EDHOC does, with 8- and 10-byte tags.
+// The packet vectors of RFC 3610, Section 8. They use a 13-byte nonce with 8-
+// and 10-byte tags.
 func TestCCMRFC3610(t *testing.T) {
 	var vectors []struct {
 		Vector     int
