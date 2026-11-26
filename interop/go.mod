@@ -3,7 +3,7 @@ module github.com/aquilliam/oscore/interop
 go 1.26.0
 
 require (
-	github.com/aquilliam/edhoc v1.0.0
+	github.com/aquilliam/edhoc v1.0.1
 	github.com/aquilliam/oscore v0.0.0
 )
 
