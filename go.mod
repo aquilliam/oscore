@@ -3,7 +3,7 @@ module github.com/aquilliam/oscore
 go 1.26.0
 
 require (
-	github.com/pion/dtls/v3 v3.1.16
+	github.com/pion/dtls/v4 v4.0.2
 	golang.org/x/crypto v0.59.0
 )
 

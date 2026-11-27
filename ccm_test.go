@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/pion/dtls/v3/pkg/crypto/ccm"
+	"github.com/pion/dtls/v4/pkg/crypto/ccm"
 )
 
 func newCCM(t testing.TB, key []byte, tagSize, nonceSize int) cipher.AEAD {

@@ -38,7 +38,7 @@ Supported:
 
 The code is pure Go with no cgo or `unsafe`, and depends only on the standard
 library, `golang.org/x/crypto` and the AES-CCM package of
-`github.com/pion/dtls/v3`.
+`github.com/pion/dtls/v4`.
 
 ## Example
 

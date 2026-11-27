@@ -16,7 +16,7 @@ updates:
       - dependency-type: direct
       - dependency-name: golang.org/x/crypto
         dependency-type: all
-      - dependency-name: github.com/pion/dtls/v3
+      - dependency-name: github.com/pion/dtls/v4
         dependency-type: all
     schedule:
       interval: weekly

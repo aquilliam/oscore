@@ -3,6 +3,10 @@
 All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+- AES-CCM comes from `github.com/pion/dtls/v4/pkg/crypto/ccm`.
+
 ## v1.0.1 (2026-11-26)
 
 - AES-CCM comes from `github.com/pion/dtls/v3/pkg/crypto/ccm` instead of an

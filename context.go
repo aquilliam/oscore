@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/pion/dtls/v3/pkg/crypto/ccm"
+	"github.com/pion/dtls/v4/pkg/crypto/ccm"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
